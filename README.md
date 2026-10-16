@@ -1,1 +1,1 @@
-# supple-ai-infrastructure
+# Terraform infrastructure for Supple AI
