@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars (not committed) and fill in.
+
+# Budget alerts and Beanstalk health emails. AWS sends a confirmation email for the
+# health notifications; click the link once.
+alert_email = "you@example.com"
+
+# "Continue with Google": create an OAuth client in Google Cloud first (README.md,
+# "Google sign-in"). Leave both unset to run without Google.
+# google_client_id     = "123456789012-abc.apps.googleusercontent.com"
+# google_client_secret = "GOCSPX-..."
+
+# Defaults, shown here for reference
+# backend_instance_type    = "t4g.micro"
+# db_instance_class        = "db.t4g.micro"
+# db_backup_retention_days = 1   # 7 after upgrading to the Paid plan
+# budget_limit_usd         = 30
+# cognito_domain_prefix    = "supple-ai-prod"

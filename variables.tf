@@ -1,0 +1,88 @@
+locals {
+  # Every resource name starts with this, e.g. supple-ai-prod-db
+  name       = "${var.project}-${var.environment}"
+  account_id = data.aws_caller_identity.current.account_id
+
+  # Public address of the app and the API (one CloudFront distribution serves both)
+  app_url = "https://${aws_cloudfront_distribution.main.domain_name}"
+  # Angular dev server; allowed as a Cognito login/logout return URL for local development
+  local_dev_url = "http://localhost:4200"
+}
+
+data "aws_caller_identity" "current" {}
+
+variable "project" {
+  description = "Project name, used as the first part of every resource name and as the Project tag."
+  type        = string
+  default     = "supple-ai"
+}
+
+variable "environment" {
+  description = "Environment name, used in resource names and as the Environment tag."
+  type        = string
+  default     = "prod"
+}
+
+variable "region" {
+  description = "AWS region for all regional resources."
+  type        = string
+  default     = "eu-north-1"
+}
+
+variable "alert_email" {
+  description = "Email address for the budget alerts and Elastic Beanstalk health notifications."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alert_email))
+    error_message = "alert_email must be an email address."
+  }
+}
+
+variable "backend_instance_type" {
+  description = "EC2 instance type for the Beanstalk environment. Must be arm64 (Graviton) to match the t4g default."
+  type        = string
+  default     = "t4g.micro"
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_backup_retention_days" {
+  description = "Days of automated RDS backups. The AWS Free plan rejects 7; raise it after upgrading to the Paid plan."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.db_backup_retention_days >= 0 && var.db_backup_retention_days <= 35
+    error_message = "db_backup_retention_days must be between 0 and 35."
+  }
+}
+
+variable "cognito_domain_prefix" {
+  description = "Prefix of the Cognito login domain (https://<prefix>.auth.<region>.amazoncognito.com). Must be unique in the region."
+  type        = string
+  default     = "supple-ai-prod"
+}
+
+variable "google_client_id" {
+  description = "OAuth client ID from Google Cloud. Leave empty to run without \"Continue with Google\"."
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "OAuth client secret from Google Cloud. Leave empty to run without \"Continue with Google\"."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "budget_limit_usd" {
+  description = "Monthly budget in USD, measured before credits. Alerts go to alert_email when actual or forecast spend exceeds it."
+  type        = number
+  default     = 30
+}

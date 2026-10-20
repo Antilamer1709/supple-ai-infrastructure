@@ -44,3 +44,5 @@ terraform.rc
 # planout
 
 .idea
+# Written by scripts/bootstrap-state.sh (contains the account ID)
+backend.hcl
