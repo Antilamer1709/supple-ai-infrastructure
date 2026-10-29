@@ -182,6 +182,13 @@ Admin endpoints need a user in the `admin` group.
    `google_client_secret`) and run `terraform apply`. The login page then shows "Continue with
    Google".
 
+Google users see their Google photo as the avatar. Cognito copies it into the user's standard
+`picture` attribute on every Google sign-in, not on token refresh, so a user who signed in before
+the mapping existed, or who changes the photo, sees the new one after their next Google sign-in
+(log out and back in). Users who signed up with a password have no `picture` and see the default
+avatar. A future social provider must map its avatar to `picture` too; if it has none, leave it
+unmapped. The app needs no change either way.
+
 The secret is also stored in the Terraform state, which sits in the encrypted, private state
 bucket. A person who signs up with a password and later uses Google with the same email ends up
 as two separate Cognito users, so add the account you actually use to `admin`.

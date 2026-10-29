@@ -79,12 +79,15 @@ resource "aws_cognito_identity_provider" "google" {
     token_url                     = "https://www.googleapis.com/oauth2/v4/token"
   }
 
+  # `picture` is the avatar URL the app shows. Every social provider maps its avatar to it;
+  # one without an avatar leaves it unmapped and its users get the default avatar.
   attribute_mapping = {
     username       = "sub"
     email          = "email"
     email_verified = "email_verified"
     given_name     = "given_name"
     family_name    = "family_name"
+    picture        = "picture"
   }
 }
 
@@ -96,7 +99,8 @@ resource "aws_cognito_user_pool_client" "backoffice" {
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  # 'profile' releases given_name/family_name, shown in the app's user settings dialog
+  # 'profile' releases given_name/family_name and picture, shown in the app's user settings
+  # dialog (the picture also in the sidebar)
   allowed_oauth_scopes         = ["phone", "openid", "email", "profile"]
   supported_identity_providers = concat(["COGNITO"], aws_cognito_identity_provider.google[*].provider_name)
 
