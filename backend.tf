@@ -42,6 +42,13 @@ data "aws_iam_policy_document" "backend_instance" {
     actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.artifacts.arn}/*"]
   }
+
+  # The admin Users screen lists the pool's accounts and the members of the admin group
+  statement {
+    sid       = "ReadUserPool"
+    actions   = ["cognito-idp:ListUsers", "cognito-idp:ListUsersInGroup"]
+    resources = [aws_cognito_user_pool.main.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "backend_instance" {

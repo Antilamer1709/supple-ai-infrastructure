@@ -32,7 +32,7 @@ the frontend uses relative `/api` URLs and the backend has no CORS setup.
 | `network.tf` | VPC (2 AZs, public + private subnets, no NAT gateway); security groups: instance accepts port 80 only from CloudFront's managed prefix list, database accepts 5432 only from the instance |
 | `database.tf` | RDS PostgreSQL 16 (`db.t4g.micro`, 20 GiB gp3, encrypted, private, deletion protection, final snapshot); master password managed by RDS in Secrets Manager, with automatic rotation turned off |
 | `cognito.tf` | User pool (email sign-in, self sign-up, deletion protection), `admin` group, optional Google provider, the back-office app client (code flow + PKCE), Managed Login domain and default branding |
-| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, email notifications), IAM roles, artifacts bucket for app versions |
+| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, email notifications), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users), artifacts bucket for app versions |
 | `frontend.tf` | Private S3 bucket, CloudFront distribution with OAC, `/api/*` routed to Beanstalk, 404 → `index.html` for Angular routes |
 | `budget.tf` | Monthly AWS Budget (default $30, measured before credits) with email alerts |
 | `versions.tf` | Terraform/provider versions, S3 state backend with native locking, default tags |
@@ -287,6 +287,10 @@ and calls the API as `/api`. In Terraform:
 - **EC2: vCPU limit exceeded** during a platform update. The account allows 5 vCPUs, and two
   t4g.micro use 4. Request more in Service Quotas ("Running On-Demand Standard instances").
 - **`ExpiredToken` or no credentials.** Run `aws login --profile healthytech` again.
+- **The app's Users screen shows "The user directory is unavailable".** The backend got an error
+  from Cognito; the cause is in the app log. Usually the instance role lacks
+  `cognito-idp:ListUsers`/`ListUsersInGroup` (the `ReadUserPool` statement in `backend.tf`), so
+  run `terraform apply`. No restart is needed; the next request uses the new permission.
 
 ## Destroying
 
