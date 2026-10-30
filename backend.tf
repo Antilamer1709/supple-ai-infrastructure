@@ -171,6 +171,9 @@ locals {
     { namespace = "aws:elasticbeanstalk:application:environment", name = "SPRING_DATASOURCE_URL", value = "jdbc:postgresql://${aws_db_instance.main.endpoint}/${aws_db_instance.main.db_name}" },
     { namespace = "aws:elasticbeanstalk:application:environment", name = "SPRING_DATASOURCE_USERNAME", value = aws_db_instance.main.username },
     { namespace = "aws:elasticbeanstalk:application:environment", name = "COGNITO_ISSUER_URI", value = "https://${aws_cognito_user_pool.main.endpoint}" },
+    # Tokens from this app client count as mobile-app activity, all others as the back office.
+    # (Not the back-office client's id: that client depends on CloudFront, which depends on this environment.)
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "COGNITO_MOBILE_CLIENT_ID", value = aws_cognito_user_pool_client.mobile.id },
     # Leave room next to Beanstalk's own agents on a 1 GiB instance
     { namespace = "aws:elasticbeanstalk:application:environment", name = "JAVA_TOOL_OPTIONS", value = "-XX:MaxRAMPercentage=40" },
 

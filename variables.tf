@@ -7,6 +7,10 @@ locals {
   app_url = "https://${aws_cloudfront_distribution.main.domain_name}"
   # Angular dev server; allowed as a Cognito login/logout return URL for local development
   local_dev_url = "http://localhost:4200"
+
+  # Custom URL scheme of the mobile app's Cognito redirects (formulated://callback, formulated://signout).
+  # Universal Links / App Links would need a custom domain.
+  mobile_url_scheme = "formulated"
 }
 
 data "aws_caller_identity" "current" {}

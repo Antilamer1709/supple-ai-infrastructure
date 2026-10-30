@@ -48,6 +48,19 @@ output "cognito_client_id" {
   value       = aws_cognito_user_pool_client.backoffice.id
 }
 
+output "cognito_mobile_client_id" {
+  description = "Cognito app client ID for the mobile app (supple-ai-backend/docs/mobile-client.md)."
+  value       = aws_cognito_user_pool_client.mobile.id
+}
+
+output "mobile_redirect_urls" {
+  description = "The mobile app client's sign-in callback and sign-out URLs."
+  value = {
+    callback = one(aws_cognito_user_pool_client.mobile.callback_urls)
+    signout  = one(aws_cognito_user_pool_client.mobile.logout_urls)
+  }
+}
+
 output "cognito_domain" {
   description = "Cognito login domain (Managed Login pages and the /logout endpoint)."
   value       = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.region}.amazoncognito.com"

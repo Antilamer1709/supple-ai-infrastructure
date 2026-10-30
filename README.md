@@ -31,7 +31,7 @@ the frontend uses relative `/api` URLs and the backend has no CORS setup.
 |---|---|
 | `network.tf` | VPC (2 AZs, public + private subnets, no NAT gateway); security groups: instance accepts port 80 only from CloudFront's managed prefix list, database accepts 5432 only from the instance |
 | `database.tf` | RDS PostgreSQL 16 (`db.t4g.micro`, 20 GiB gp3, encrypted, private, deletion protection, final snapshot); master password managed by RDS in Secrets Manager, with automatic rotation turned off |
-| `cognito.tf` | User pool (email sign-in, self sign-up, deletion protection), `admin` group, optional Google provider, the back-office app client (code flow + PKCE), Managed Login domain and default branding |
+| `cognito.tf` | User pool (email sign-in, self sign-up, deletion protection), `admin` group, optional Google provider, the back-office app client (code flow + PKCE), the mobile app client (code flow + PKCE and native sign-in, `formulated://` redirects), Managed Login domain and default branding for both clients |
 | `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, email notifications), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users), artifacts bucket for app versions |
 | `frontend.tf` | Private S3 bucket, CloudFront distribution with OAC, `/api/*` routed to Beanstalk, 404 → `index.html` for Angular routes |
 | `budget.tf` | Monthly AWS Budget (default $30, measured before credits) with email alerts |
@@ -106,7 +106,7 @@ Do these once, in this order.
    Afterwards AWS sends a "Subscription Confirmation" email for the Beanstalk notifications;
    click the link. If the apply fails, see [Troubleshooting the first apply](#troubleshooting-the-first-apply).
 
-5. **Put the new Cognito IDs into the apps.** Both still contain `SET-AFTER-FIRST-APPLY`
+5. **Put the new Cognito IDs into the apps.** Both still contain `6plp3eqqvjlf3u7mav5q7b5mh6%`
    placeholders:
 
    ```bash
@@ -192,6 +192,22 @@ unmapped. The app needs no change either way.
 The secret is also stored in the Terraform state, which sits in the encrypted, private state
 bucket. A person who signs up with a password and later uses Google with the same email ends up
 as two separate Cognito users, so add the account you actually use to `admin`.
+
+## Mobile app
+
+The mobile app's Cognito client exists ahead of the app, so its developer never needs AWS access.
+It's a public client allowing both Managed Login in the system browser (code + PKCE, Google
+included) and native sign-in screens (`USER_AUTH` / SRP), with redirects
+`formulated://callback` and `formulated://signout` (the `mobile_url_scheme` local in
+`variables.tf`), 60-minute access/ID tokens and a 90-day refresh token. The developer's guide is
+`../supple-ai-backend/docs/mobile-client.md`; after the apply that creates the client, put
+`terraform output -raw cognito_mobile_client_id` in place of its `6plp3eqqvjlf3u7mav5q7b5mh6%`.
+
+Beanstalk receives the same id as `COGNITO_MOBILE_CLIENT_ID`: the backend counts that client's
+tokens (and anonymous requests carrying `X-Installation-Id`) as app activity and every other token
+as back office, for the users screen's "last seen" and the dashboard statistics. It's the mobile
+client's id that's passed because the back-office client depends on CloudFront, which depends on
+the Beanstalk environment. Changing the env var restarts the app (about a minute).
 
 ## Operations
 

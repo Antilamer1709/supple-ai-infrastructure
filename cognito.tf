@@ -122,6 +122,40 @@ resource "aws_cognito_user_pool_client" "backoffice" {
   }
 }
 
+# Public client for the mobile app, created ahead of the app so its developer never needs AWS
+# access. It allows both Managed Login in the system browser (code + PKCE, Google included) and
+# native sign-in screens through the Cognito SDK or Amplify (USER_AUTH / SRP). The backend gets
+# its id as COGNITO_MOBILE_CLIENT_ID and counts its tokens as app activity, every other token as
+# the back office.
+resource "aws_cognito_user_pool_client" "mobile" {
+  name         = "${local.name}-mobile"
+  user_pool_id = aws_cognito_user_pool.main.id
+
+  generate_secret                      = false
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["phone", "openid", "email", "profile"]
+  supported_identity_providers         = concat(["COGNITO"], aws_cognito_identity_provider.google[*].provider_name)
+
+  callback_urls = ["${local.mobile_url_scheme}://callback"]
+  logout_urls   = ["${local.mobile_url_scheme}://signout"]
+
+  explicit_auth_flows           = ["ALLOW_USER_AUTH", "ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
+  prevent_user_existence_errors = "ENABLED"
+  enable_token_revocation       = true
+
+  # Mobile users expect to stay signed in: a 90-day refresh token instead of the back office's 30
+  access_token_validity  = 60
+  id_token_validity      = 60
+  refresh_token_validity = 90
+
+  token_validity_units {
+    access_token  = "minutes"
+    id_token      = "minutes"
+    refresh_token = "days"
+  }
+}
+
 # Managed Login (version 2), the current Cognito sign-in and sign-up pages
 resource "aws_cognito_user_pool_domain" "main" {
   domain                = var.cognito_domain_prefix
@@ -133,5 +167,11 @@ resource "aws_cognito_user_pool_domain" "main" {
 resource "aws_cognito_managed_login_branding" "backoffice" {
   user_pool_id                = aws_cognito_user_pool.main.id
   client_id                   = aws_cognito_user_pool_client.backoffice.id
+  use_cognito_provided_values = true
+}
+
+resource "aws_cognito_managed_login_branding" "mobile" {
+  user_pool_id                = aws_cognito_user_pool.main.id
+  client_id                   = aws_cognito_user_pool_client.mobile.id
   use_cognito_provided_values = true
 }
