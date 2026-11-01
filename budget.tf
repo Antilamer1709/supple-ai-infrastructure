@@ -17,7 +17,7 @@ resource "aws_budgets_budget" "monthly" {
     comparison_operator        = "GREATER_THAN"
     threshold                  = 100
     threshold_type             = "PERCENTAGE"
-    subscriber_email_addresses = [var.alert_email]
+    subscriber_email_addresses = var.alert_emails
   }
 
   # Needs about 5 weeks of usage data before AWS starts forecasting
@@ -26,6 +26,6 @@ resource "aws_budgets_budget" "monthly" {
     comparison_operator        = "GREATER_THAN"
     threshold                  = 100
     threshold_type             = "PERCENTAGE"
-    subscriber_email_addresses = [var.alert_email]
+    subscriber_email_addresses = var.alert_emails
   }
 }

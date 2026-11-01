@@ -70,3 +70,8 @@ output "database_secret_arn" {
   description = "Secrets Manager secret holding the RDS master user and password."
   value       = aws_db_instance.main.master_user_secret[0].secret_arn
 }
+
+output "monitoring_dashboard_url" {
+  description = "CloudWatch dashboard with the alarms and the backend, database and CloudFront graphs (docs/monitoring.md)."
+  value       = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards/dashboard/${aws_cloudwatch_dashboard.main.dashboard_name}"
+}

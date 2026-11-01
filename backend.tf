@@ -49,6 +49,20 @@ data "aws_iam_policy_document" "backend_instance" {
     actions   = ["cognito-idp:ListUsers", "cognito-idp:ListUsersInGroup"]
     resources = [aws_cognito_user_pool.main.arn]
   }
+
+  # Micrometer pushes the allowlisted meters (monitoring.tf). PutMetricData has no resource
+  # ARN, so the namespace condition is what keeps the app out of every other namespace.
+  statement {
+    sid       = "PublishMetrics"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = [local.backend_metrics_namespace]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "backend_instance" {
@@ -137,7 +151,8 @@ locals {
     { namespace = "aws:elasticbeanstalk:environment", name = "ServiceRole", value = aws_iam_role.beanstalk_service.arn },
     { namespace = "aws:ec2:instances", name = "InstanceTypes", value = var.backend_instance_type },
     { namespace = "aws:ec2:vpc", name = "VPCId", value = module.vpc.vpc_id },
-    { namespace = "aws:ec2:vpc", name = "Subnets", value = join(",", module.vpc.public_subnets) },
+    # Sorted, because Beanstalk reports them sorted and any other order is a change on every plan
+    { namespace = "aws:ec2:vpc", name = "Subnets", value = join(",", sort(module.vpc.public_subnets)) },
 
     # Only our security group (port 80 from CloudFront). Beanstalk's default group
     # would open port 80 to the whole internet.
@@ -150,8 +165,17 @@ locals {
     # Without a load balancer Beanstalk never calls this URL; it takes effect once one is added
     { namespace = "aws:elasticbeanstalk:application", name = "Application Healthcheck URL", value = "/actuator/health" },
     { namespace = "aws:elasticbeanstalk:healthreporting:system", name = "SystemType", value = "enhanced" },
-    { namespace = "aws:elasticbeanstalk:sns:topics", name = "Notification Endpoint", value = var.alert_email },
-    { namespace = "aws:elasticbeanstalk:sns:topics", name = "Notification Protocol", value = "email" },
+    # Publish two enhanced-health metrics to CloudWatch every 60 s, for the 5xx alarm and the
+    # dashboard. Each is a billed custom metric (monitoring.tf has the free-tier count);
+    # EnvironmentHealth is always published and free. A literal string in the key order Beanstalk
+    # reports it back in: jsonencode sorts the keys, which would be a change on every plan.
+    {
+      namespace = "aws:elasticbeanstalk:healthreporting:system", name = "ConfigDocument"
+      value     = "{\"Version\":1,\"CloudWatchMetrics\":{\"Environment\":{\"ApplicationRequests5xx\":60,\"ApplicationLatencyP95\":60}}}"
+    },
+    # Deploy, health and platform-update events go to the alerts topic, so they reach every
+    # address in alert_emails
+    { namespace = "aws:elasticbeanstalk:sns:topics", name = "Notification Topic ARN", value = aws_sns_topic.alerts.arn },
 
     # Minor and patch platform updates on Sunday nights (UTC)
     { namespace = "aws:elasticbeanstalk:managedactions", name = "ManagedActionsEnabled", value = "true" },
@@ -163,7 +187,7 @@ locals {
     { namespace = "aws:elasticbeanstalk:command", name = "DeploymentPolicy", value = "AllAtOnce" },
 
     { namespace = "aws:elasticbeanstalk:cloudwatch:logs", name = "StreamLogs", value = "true" },
-    { namespace = "aws:elasticbeanstalk:cloudwatch:logs", name = "RetentionInDays", value = "14" },
+    { namespace = "aws:elasticbeanstalk:cloudwatch:logs", name = "RetentionInDays", value = "30" },
     { namespace = "aws:elasticbeanstalk:cloudwatch:logs", name = "DeleteOnTerminate", value = "true" },
 
     # Environment variables read by application.yaml
@@ -176,6 +200,10 @@ locals {
     { namespace = "aws:elasticbeanstalk:application:environment", name = "COGNITO_MOBILE_CLIENT_ID", value = aws_cognito_user_pool_client.mobile.id },
     # Leave room next to Beanstalk's own agents on a 1 GiB instance
     { namespace = "aws:elasticbeanstalk:application:environment", name = "JAVA_TOOL_OPTIONS", value = "-XX:MaxRAMPercentage=40" },
+    # Push heap and DB-pool metrics to CloudWatch (SuppleAI/Backend) and log JSON lines with
+    # the request's context; local runs keep plain-text logs and no export (monitoring.tf)
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "MANAGEMENT_CLOUDWATCH_METRICS_EXPORT_ENABLED", value = "true" },
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "LOGGING_STRUCTURED_FORMAT_CONSOLE", value = "ecs" },
 
     # The "password" key of the RDS-managed secret, fetched when the instance starts or
     # the app is deployed

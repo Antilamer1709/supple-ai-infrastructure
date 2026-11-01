@@ -1,8 +1,9 @@
 # Copy to terraform.tfvars (not committed) and fill in.
 
-# Budget alerts and Beanstalk health emails. AWS sends a confirmation email for the
-# health notifications; click the link once.
-alert_email = "you@example.com"
+# Who gets every alert: CloudWatch alarms, Beanstalk events and the budget (1 to 10 addresses).
+# After each apply that adds an address, it receives an "AWS Notification - Subscription
+# Confirmation" email; click the link. docs/monitoring.md, "Changing who gets alerts".
+alert_emails = ["you@example.com"]
 
 # "Continue with Google": create an OAuth client in Google Cloud first (README.md,
 # "Google sign-in"). Leave both unset to run without Google.

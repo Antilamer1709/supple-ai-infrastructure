@@ -75,4 +75,17 @@ region = "${REGION}"
 EOF
 
 echo "Wrote $INFRA_DIR/backend.hcl"
-echo "Next: terraform init -backend-config=backend.hcl"
+
+# The real terraform.tfvars lives next to the state (README.md, "Setup", path B)
+TFVARS_S3="s3://$BUCKET/terraform.tfvars"
+if aws s3api head-object --bucket "$BUCKET" --key terraform.tfvars --region "$REGION" >/dev/null 2>&1; then
+  echo "This account already has a deployment. Next:"
+  [[ -f "$INFRA_DIR/terraform.tfvars" ]] || echo "  aws s3 cp $TFVARS_S3 terraform.tfvars"
+  echo "  terraform init -backend-config=backend.hcl"
+  echo "  terraform plan    # must show no changes"
+else
+  echo "Next: create terraform.tfvars from terraform.tfvars.example, then"
+  echo "  terraform init -backend-config=backend.hcl"
+  echo "After the first apply, store terraform.tfvars for the next person:"
+  echo "  aws s3 cp terraform.tfvars $TFVARS_S3"
+fi

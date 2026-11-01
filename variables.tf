@@ -33,13 +33,19 @@ variable "region" {
   default     = "eu-north-1"
 }
 
-variable "alert_email" {
-  description = "Email address for the budget alerts and Elastic Beanstalk health notifications."
-  type        = string
+variable "alert_emails" {
+  description = "Email addresses for every alert: CloudWatch alarms, Elastic Beanstalk events and the budget. Each one confirms its SNS subscription once."
+  type        = list(string)
 
   validation {
-    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alert_email))
-    error_message = "alert_email must be an email address."
+    condition     = alltrue([for email in var.alert_emails : can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", email))])
+    error_message = "Every entry of alert_emails must be an email address."
+  }
+
+  # AWS Budgets accepts at most 10 email subscribers per notification
+  validation {
+    condition     = length(var.alert_emails) >= 1 && length(var.alert_emails) <= 10 && length(distinct(var.alert_emails)) == length(var.alert_emails)
+    error_message = "alert_emails must hold 1 to 10 distinct addresses."
   }
 }
 
@@ -86,7 +92,7 @@ variable "google_client_secret" {
 }
 
 variable "budget_limit_usd" {
-  description = "Monthly budget in USD, measured before credits. Alerts go to alert_email when actual or forecast spend exceeds it."
+  description = "Monthly budget in USD, measured before credits. Alerts go to alert_emails when actual or forecast spend exceeds it."
   type        = number
   default     = 30
 }

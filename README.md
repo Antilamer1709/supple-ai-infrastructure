@@ -32,9 +32,10 @@ the frontend uses relative `/api` URLs and the backend has no CORS setup.
 | `network.tf` | VPC (2 AZs, public + private subnets, no NAT gateway); security groups: instance accepts port 80 only from CloudFront's managed prefix list, database accepts 5432 only from the instance |
 | `database.tf` | RDS PostgreSQL 16 (`db.t4g.micro`, 20 GiB gp3, encrypted, private, deletion protection, final snapshot); master password managed by RDS in Secrets Manager, with automatic rotation turned off |
 | `cognito.tf` | User pool (email sign-in, self sign-up, deletion protection), `admin` group, optional Google provider, the back-office app client (code flow + PKCE), the mobile app client (code flow + PKCE and native sign-in, `formulated://` redirects), Managed Login domain and default branding for both clients |
-| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, email notifications), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users), artifacts bucket for app versions |
+| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, notifications through the alerts topic), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users, and may publish its own metrics), artifacts bucket for app versions |
 | `frontend.tf` | Private S3 bucket, CloudFront distribution with OAC, `/api/*` routed to Beanstalk, 404 → `index.html` for Angular routes |
 | `budget.tf` | Monthly AWS Budget (default $30, measured before credits) with email alerts |
+| `monitoring.tf` | SNS alert topic with every `alert_emails` address subscribed, the app's error-count metric, 9 CloudWatch alarms, the `supple-ai-prod-overview` dashboard ([docs/monitoring.md](docs/monitoring.md)) |
 | `versions.tf` | Terraform/provider versions, S3 state backend with native locking, default tags |
 | `variables.tf`, `outputs.tf` | Inputs (and naming locals) and the values the scripts read |
 
@@ -52,7 +53,8 @@ About **$25 a month**, paid from credits on the Free plan:
 | EC2 t4g.micro + 8 GiB root disk | ≈ $7.00 |
 | Public IPv4 (the Elastic IP) | ≈ $3.65 |
 | Secrets Manager (database password) | $0.40 |
-| CloudFront, Cognito (< 10,000 users), S3, CloudWatch Logs, SNS, Budgets | ≈ $0 (always-free allowances) |
+| CloudFront, Cognito (< 10,000 users), S3, SNS, Budgets | ≈ $0 (always-free allowances) |
+| CloudWatch: logs, 6 custom metrics, 9 alarms (10 alarm metrics), 1 dashboard | $0 (always-free tier, also on the Paid plan; [docs/monitoring.md](docs/monitoring.md)) |
 
 ## Prerequisites
 
@@ -68,11 +70,43 @@ About **$25 a month**, paid from credits on the Free plan:
 
   If a command later fails with expired credentials, run `aws login --profile healthytech` again.
 
-## First-time setup
+## Setup
 
-Do these once, in this order.
+Pick the path that matches your situation:
 
-1. **Check the account.** It's on the AWS Free plan: nothing is charged, usage comes out of the
+- **[A. New AWS account](#a-new-aws-account):** nothing is deployed yet. You create the state
+  bucket, the configuration and every resource.
+- **[B. Existing deployment](#b-existing-deployment):** the app already runs and you just cloned
+  this repo. You fetch the configuration and get a working `terraform plan`. You create nothing.
+
+### Files you won't find in git
+
+Three files that Terraform and the scripts need are gitignored, because they hold the account ID,
+secrets, or both:
+
+| File | What it holds | Where it comes from |
+|---|---|---|
+| `backend.hcl` | The state bucket's name and region, for `terraform init` | Written by `scripts/bootstrap-state.sh` (A step 3, B step 3). Re-running it is safe |
+| `terraform.tfvars` | Your settings: `alert_emails`, the Google client ID and secret, any overrides | **New account:** copy `terraform.tfvars.example` and fill it in (A step 4). **Existing deployment:** download it from the state bucket (B step 4). It's stored there next to the state: private, encrypted and versioned |
+| `.terraform/`, `.terraform.lock.hcl` | Downloaded providers and modules | `terraform init` creates `.terraform/`. The lock file *is* committed |
+
+The state itself stays in the S3 bucket and never comes to your machine.
+
+**Keep the stored `terraform.tfvars` current.** After every change to your local copy, upload it
+again (A step 8). Otherwise the next person applies with old values and undoes your change:
+Google sign-in disappears without the Google values, and alerts go to the old addresses. The
+bucket keeps every earlier version for 90 days.
+
+### A. New AWS account
+
+1. **Install the tools and sign in** (see [Prerequisites](#prerequisites)):
+
+   ```bash
+   aws login --profile healthytech
+   export AWS_PROFILE=healthytech
+   ```
+
+2. **Check the account.** It's on the AWS Free plan: nothing is charged, usage comes out of the
    credits, and the account closes after 6 months or when the credits run out, whichever comes
    first. See the end date and remaining credits:
 
@@ -83,30 +117,49 @@ Do these once, in this order.
    Optional: Console Home → "Explore AWS" lists five starter activities worth up to $100 of extra
    credits. Do them before the first apply and delete whatever they create afterwards.
 
-2. **Create the state bucket** (writes the gitignored `backend.hcl`):
+3. **Create the state bucket.** This writes `backend.hcl`:
 
    ```bash
    scripts/bootstrap-state.sh
    ```
 
-3. **Set your variables:**
+4. **Create `terraform.tfvars`:**
 
    ```bash
-   cp terraform.tfvars.example terraform.tfvars   # set alert_email; leave Google empty for now
+   cp terraform.tfvars.example terraform.tfvars
    ```
 
-4. **Apply** (15–20 minutes; CloudFront and RDS take longest):
+   Set `alert_emails` to the addresses that should get alerts. Leave the Google values commented
+   out for now ([Google sign-in](#google-sign-in) adds them later).
+
+5. **Initialize Terraform:**
 
    ```bash
    terraform init -backend-config=backend.hcl
+   ```
+
+6. **Create the infrastructure.** This takes 15–20 minutes; CloudFront and RDS are the slowest:
+
+   ```bash
    terraform plan
    terraform apply
    ```
 
-   Afterwards AWS sends a "Subscription Confirmation" email for the Beanstalk notifications;
-   click the link. If the apply fails, see [Troubleshooting the first apply](#troubleshooting-the-first-apply).
+   If it fails, see [Troubleshooting the first apply](#troubleshooting-the-first-apply).
 
-5. **Put the new Cognito IDs into the apps.** Both still contain `6plp3eqqvjlf3u7mav5q7b5mh6%`
+7. **Confirm the alert emails.** Every address in `alert_emails` receives an "AWS Notification -
+   Subscription Confirmation" email. Click the link, or that address gets no alarm or Beanstalk
+   emails.
+
+8. **Store `terraform.tfvars` for the next person:**
+
+   ```bash
+   aws s3 cp terraform.tfvars "s3://$(awk -F'"' '/bucket/ {print $2}' backend.hcl)/terraform.tfvars"
+   ```
+
+   Repeat this after every later change to the file.
+
+9. **Put the new Cognito IDs into the apps.** Both still contain `6plp3eqqvjlf3u7mav5q7b5mh6%`
    placeholders:
 
    ```bash
@@ -120,20 +173,93 @@ Do these once, in this order.
    - `../supple-ai-backend/src/main/resources/application.yaml`: the default in
      `issuer-uri: ${COGNITO_ISSUER_URI:…}` (used for local runs; in production Beanstalk sets
      `COGNITO_ISSUER_URI` itself).
+   - `../supple-ai-backend/docs/mobile-client.md`: `terraform output -raw cognito_mobile_client_id`
+     (see [Mobile app](#mobile-app)).
 
-   These change only if the user pool is ever recreated.
+   Commit these. They change only if the user pool is ever recreated.
 
-6. **Deploy the backend, then the frontend:**
+10. **Deploy the backend, then the frontend:**
+
+    ```bash
+    scripts/deploy-backend.sh     # replaces Beanstalk's sample app with the Spring Boot JAR
+    scripts/deploy-frontend.sh
+    ```
+
+11. **Make yourself an admin.** Open `terraform output -raw cloudfront_url`, choose **Sign up**,
+    and confirm the emailed code. You'll see "Access Denied" because you're not an admin yet. In
+    the AWS console go to Amazon Cognito → User pools → `supple-ai-prod` → Groups → `admin` →
+    **Add user to group**. Then log out of the app and back in.
+
+12. **Check the monitoring.** Wait about 15 minutes after the backend deploy, then follow
+    [docs/monitoring.md, "After the first apply with monitoring"](docs/monitoring.md#after-the-first-apply-with-monitoring).
+
+13. **Optional: Google sign-in.** Follow [Google sign-in](#google-sign-in), then upload
+    `terraform.tfvars` again (step 8).
+
+### B. Existing deployment
+
+You need access to the `healthytech` AWS account; ask its owner for a console sign-in. The
+deploy scripts expect the other two repos next to this one:
+
+```
+<any folder>/
+├── supple-ai-backend/
+├── supple-ai-frontend/
+└── supple-ai-infrastructure/   ← this repo
+```
+
+1. **Install the tools and sign in** (see [Prerequisites](#prerequisites)):
 
    ```bash
-   scripts/deploy-backend.sh     # replaces Beanstalk's sample app with the Spring Boot JAR
-   scripts/deploy-frontend.sh
+   aws login --profile healthytech
+   export AWS_PROFILE=healthytech
    ```
 
-7. **Make yourself an admin.** Open `terraform output -raw cloudfront_url`, choose **Sign up**,
-   and confirm the emailed code. You'll see "Access Denied" because you're not an admin yet. In
-   the AWS console go to Amazon Cognito → User pools → `supple-ai-prod` → Groups → `admin` →
-   **Add user to group**. Then log out of the app and back in.
+2. **Clone the three repos** side by side, as above.
+
+3. **Get `backend.hcl`.** The script finds the existing state bucket, rewrites `backend.hcl`,
+   and prints the next commands:
+
+   ```bash
+   scripts/bootstrap-state.sh
+   ```
+
+4. **Download `terraform.tfvars`** from the state bucket:
+
+   ```bash
+   aws s3 cp "s3://$(awk -F'"' '/bucket/ {print $2}' backend.hcl)/terraform.tfvars" terraform.tfvars
+   ```
+
+   If the bucket has no `terraform.tfvars`, the person who set up the account skipped A step 8.
+   Get the file from them; don't build one from the example, because the values must match
+   what's deployed.
+
+5. **Initialize Terraform:**
+
+   ```bash
+   terraform init -backend-config=backend.hcl
+   ```
+
+6. **Check that your setup matches production:**
+
+   ```bash
+   terraform plan
+   ```
+
+   It must show **no changes**, except one harmless line Terraform plans on every run: the
+   Beanstalk environment `~ update in-place` adding the `ServiceRoleForManagedUpdates` setting.
+   Beanstalk never reports that setting back, so Terraform always thinks it's missing. If the
+   plan shows anything else, **don't apply.** Either your `terraform.tfvars` is older than what was last applied,
+   or this branch differs from what's deployed. Find out who applied last and why before you
+   continue.
+
+7. **Optional: add yourself to the alerts.** See
+   [docs/monitoring.md, "Changing who gets alerts"](docs/monitoring.md#changing-who-gets-alerts).
+
+8. **Deploy** when you have app changes; see [Deploying](#deploying).
+
+9. **For admin access in the app,** sign up and ask an existing admin to add you to the `admin`
+   group (A step 11).
 
 ## Deploying
 
@@ -209,15 +335,41 @@ as back office, for the users screen's "last seen" and the dashboard statistics.
 client's id that's passed because the back-office client depends on CloudFront, which depends on
 the Beanstalk environment. Changing the env var restarts the app (about a minute).
 
+## Monitoring
+
+CloudWatch watches the backend, the database and CloudFront for $0, inside the always-free tier.
+Every address in `alert_emails` gets an email when one of 9 alarms fires and again when it
+clears:
+
+- the environment is unhealthy
+- API 5xx responses
+- heap pressure
+- a starved database connection pool
+- app ERROR lines
+- low database storage
+- low CPU credits on the database or the instance
+- slow API responses
+
+Beanstalk events and the budget alerts go to the same addresses. The
+`supple-ai-prod-overview` dashboard (`terraform output -raw monitoring_dashboard_url`) shows all
+of it in one place. On Beanstalk the app logs JSON lines carrying the request id and the user's
+Cognito `sub`, plus one line per API request with its status and duration.
+
+[docs/monitoring.md](docs/monitoring.md) has where to find each metric, alarm and log, what to
+check when an alarm fires, ready-to-paste Logs Insights queries, and how to change or add
+recipients.
+
 ## Operations
 
-- **Logs.** CloudWatch Logs → `/aws/elasticbeanstalk/supple-ai-prod-backend/var/log/web.stdout.log`
-  (the app), kept for 14 days. You can also use the Beanstalk console → Logs.
+- **Monitoring and logs.** [docs/monitoring.md](docs/monitoring.md) covers the dashboard,
+  the alarms, the log groups (kept for 30 days) with ready-to-paste Logs Insights queries, and
+  how to change who gets alerts.
 - **Shell on the instance.** There's no SSH. Use EC2 console → the instance → **Connect** →
   Session Manager.
-- **Health.** Beanstalk emails `alert_email` when health changes or a deployment fails. Without a
-  load balancer it doesn't call `/actuator/health`; it judges health from the instance and nginx
-  logs.
+- **Health.** Beanstalk emails every address in `alert_emails` when health changes or a
+  deployment fails, and the `environment-unhealthy` alarm fires after 5 minutes of Degraded or
+  Severe. Without a load balancer it doesn't call `/actuator/health`; it judges health from the
+  instance and nginx logs.
 - **Platform updates.** Minor and patch updates run automatically on Sunday nights (UTC). During
   one, Beanstalk briefly runs a second instance.
 - **Database access.** The database isn't reachable from the internet. Open a tunnel through the
@@ -265,6 +417,10 @@ on it:
 5. **Raise RDS backups to 7 days** (`db_backup_retention_days = 7`; the Free plan allows only
    1). Consider turning on storage autoscaling too.
 6. **Take a database dump** (see Operations) before the Free plan ends, as long as you're on it.
+7. **Add an outside uptime check.** Today only Beanstalk's own health agent notices that the API
+   is down. The load balancer's `/actuator/health` check (item 2) covers this for free. A Route 53
+   health check isn't an option on this account: its metrics, and therefore its alarm, live in
+   us-east-1, where the SCP denies SNS.
 
 A custom domain (below) also allows HTTPS between CloudFront and the load balancer.
 
@@ -303,6 +459,22 @@ and calls the API as `/api`. In Terraform:
 - **EC2: vCPU limit exceeded** during a platform update. The account allows 5 vCPUs, and two
   t4g.micro use 4. Request more in Service Quotas ("Running On-Demand Standard instances").
 - **`ExpiredToken` or no credentials.** Run `aws login --profile healthytech` again.
+- **`aws_cloudwatch_log_metric_filter.app_errors`: "The specified log group does not exist".**
+  Beanstalk creates the app's log group shortly after the environment. Wait a few minutes and
+  run `terraform apply` again.
+- **`No value for required variable "alert_emails"`, or a warning about an undeclared
+  `alert_email`.** The `terraform.tfvars` predates the switch to a list. Replace
+  `alert_email = "you@example.com"` with `alert_emails = ["you@example.com"]` and upload the file
+  to the state bucket again (Setup, A step 8).
+- **Every `terraform plan` shows a change to a Beanstalk setting.** Beanstalk reports some
+  settings in its own form, and Terraform compares them as text. `ConfigDocument` is therefore a
+  literal string in Beanstalk's key order, and `Subnets` is sorted. If one of them shows up
+  again, copy the value Beanstalk reports (the `-` side of the plan) into `backend.tf`.
+  `ServiceRoleForManagedUpdates` is the known exception (Setup, B step 6).
+- **`updating Elastic Beanstalk Environment: Service:AmazonSNS, Message:Topic does not exist`.**
+  This happened once, when the notifications moved from Beanstalk's own topic to
+  `supple-ai-prod-alerts`. Beanstalk applied the new settings anyway. Run `terraform apply`
+  again; it only creates what the failed run skipped.
 - **The app's Users screen shows "The user directory is unavailable".** The backend got an error
   from Cognito; the cause is in the app log. Usually the instance role lacks
   `cognito-idp:ListUsers`/`ListUsersInGroup` (the `ReadUserPool` statement in `backend.tf`), so
