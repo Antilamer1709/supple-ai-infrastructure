@@ -23,6 +23,11 @@ Every address in `alert_emails` gets:
 The alarm and Beanstalk emails come through the SNS topic `supple-ai-prod-alerts`. The budget
 emails each address directly.
 
+The Beanstalk email "Environment health has transitioned from Ok to Warning" is the only memory
+alert: EC2 doesn't report memory to CloudWatch. While the Warning lasts, Elastic Beanstalk →
+`supple-ai-prod-backend` → Health shows the cause, for example "90 % of memory is in use" (the
+reason the instance moved from 1 GiB to 2 GiB). The cause disappears once health is Ok again.
+
 ## Where to look
 
 | What | Where |
@@ -46,7 +51,7 @@ emails each address directly.
 | `ApplicationRequests5xx` | `AWS/ElasticBeanstalk` | Beanstalk enhanced health, from nginx's log | API responses with a 5xx status |
 | `ApplicationLatencyP95` | `AWS/ElasticBeanstalk` | Beanstalk enhanced health, from nginx's log | 95th-percentile API response time, in seconds |
 | `supple.jvm.heap.used.value` | `SuppleAI/Backend` | Backend (Micrometer), every minute | Heap in use, in bytes |
-| `supple.jvm.heap.max.value` | `SuppleAI/Backend` | Backend (Micrometer) | Maximum heap: 40% of the instance's memory |
+| `supple.jvm.heap.max.value` | `SuppleAI/Backend` | Backend (Micrometer) | Maximum heap: 50% of the instance's memory |
 | `hikaricp.connections.pending.value` | `SuppleAI/Backend` | Backend (Micrometer) | Requests waiting for a database connection |
 | `ErrorLogLines` | `SuppleAI/Backend` | Log metric filter on the app log | ERROR lines the app wrote |
 | `CPUUtilization`, `CPUCreditBalance` | `AWS/EC2`, `AWS/RDS` | AWS, free | CPU, and the burst credits a t4g instance has left |

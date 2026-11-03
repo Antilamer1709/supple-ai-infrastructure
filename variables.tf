@@ -50,9 +50,9 @@ variable "alert_emails" {
 }
 
 variable "backend_instance_type" {
-  description = "EC2 instance type for the Beanstalk environment. Must be arm64 (Graviton) to match the t4g default."
+  description = "EC2 instance type for the Beanstalk environment. Must be arm64 (Graviton) to match the t4g default. 2 GiB: on 1 GiB (t4g.micro) the JVM and Beanstalk's agents filled 90% of memory."
   type        = string
-  default     = "t4g.micro"
+  default     = "t4g.small"
 }
 
 variable "db_instance_class" {
@@ -94,5 +94,5 @@ variable "google_client_secret" {
 variable "budget_limit_usd" {
   description = "Monthly budget in USD, measured before credits. Alerts go to alert_emails when actual or forecast spend exceeds it."
   type        = number
-  default     = 30
+  default     = 40
 }

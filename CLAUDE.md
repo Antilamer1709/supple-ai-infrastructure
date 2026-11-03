@@ -57,5 +57,5 @@ scripts/deploy-frontend.sh
 
 - The `healthytech` account is a "Sign up for AWS (new)" project account on the **Free plan**. AWS-managed SCPs allow regional resources only in `eu-north-1`; global services go through `us-east-1`, and ACM, CloudFront, Budgets and IAM are allowed there. SNS is denied in `us-east-1`. Spot, Lambda@Edge, Organizations changes and IAM `*Provider*` actions are denied. Roles under `/managed/` are AWS's; don't touch them.
 - The Free plan allows only free-tier instance types (t3/t4g micro/small, c7i-flex.large, m7i-flex.large; `db.t3.micro`/`db.t4g.micro` for RDS). It reportedly rejects RDS backup retention above 1 day and in-place EC2 resizes. The account closes when the credits run out or the plan ends (2027-04-15 as of 2026-10-19), unless upgraded in AWS Settings. Check with `freetier GetAccountPlanState` through aws-mcp.
-- EC2 vCPU quota is 5: one t4g.micro (2 vCPU), plus a second one temporarily during managed platform updates.
+- EC2 vCPU quota is 5: one t4g.small (2 vCPU), plus a second one temporarily during managed platform updates.
 - Budgets must use `include_credit = false`. On the Free plan, usage net of credits is always $0.

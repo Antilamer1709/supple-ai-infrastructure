@@ -11,8 +11,8 @@ alert_emails = ["you@example.com"]
 # google_client_secret = "GOCSPX-..."
 
 # Defaults, shown here for reference
-# backend_instance_type    = "t4g.micro"
+# backend_instance_type    = "t4g.small"
 # db_instance_class        = "db.t4g.micro"
 # db_backup_retention_days = 1   # 7 after upgrading to the Paid plan
-# budget_limit_usd         = 30
+# budget_limit_usd         = 40
 # cognito_domain_prefix    = "supple-ai-prod"

@@ -198,8 +198,10 @@ locals {
     # Tokens from this app client count as mobile-app activity, all others as the back office.
     # (Not the back-office client's id: that client depends on CloudFront, which depends on this environment.)
     { namespace = "aws:elasticbeanstalk:application:environment", name = "COGNITO_MOBILE_CLIENT_ID", value = aws_cognito_user_pool_client.mobile.id },
-    # Leave room next to Beanstalk's own agents on a 1 GiB instance
-    { namespace = "aws:elasticbeanstalk:application:environment", name = "JAVA_TOOL_OPTIONS", value = "-XX:MaxRAMPercentage=40" },
+    # Half the instance's memory for the heap. The rest holds the JVM's non-heap memory (about
+    # a quarter on top of the heap) and Linux with Beanstalk's agents (300-400 MB), so a full
+    # heap still keeps the instance under enhanced health's 90%-of-memory Warning.
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "JAVA_TOOL_OPTIONS", value = "-XX:MaxRAMPercentage=50" },
     # Push heap and DB-pool metrics to CloudWatch (SuppleAI/Backend) and log JSON lines with
     # the request's context; local runs keep plain-text logs and no export (monitoring.tf)
     { namespace = "aws:elasticbeanstalk:application:environment", name = "MANAGEMENT_CLOUDWATCH_METRICS_EXPORT_ENABLED", value = "true" },

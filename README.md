@@ -12,7 +12,7 @@ Browser ── HTTPS ──> CloudFront (https://dxxxx.cloudfront.net)
                         │  /*      → S3 bucket (private, Origin Access Control): the Angular build
                         │  /api/*  → Elastic Beanstalk, HTTP :80 (only CloudFront may connect)
                         ▼
-              Beanstalk single instance, t4g.micro, public subnet, Elastic IP
+              Beanstalk single instance, t4g.small, public subnet, Elastic IP
               (Corretto 25, nginx → Spring Boot on :5000)
                         │ 5432 (only from the instance)
                         ▼
@@ -34,7 +34,7 @@ the frontend uses relative `/api` URLs and the backend has no CORS setup.
 | `cognito.tf` | User pool (email sign-in, self sign-up, deletion protection), `admin` group, optional Google provider, the back-office app client (code flow + PKCE), the mobile app client (code flow + PKCE and native sign-in, `formulated://` redirects), Managed Login domain and default branding for both clients |
 | `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, notifications through the alerts topic), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users, and may publish its own metrics), artifacts bucket for app versions |
 | `frontend.tf` | Private S3 bucket, CloudFront distribution with OAC, `/api/*` routed to Beanstalk, 404 → `index.html` for Angular routes |
-| `budget.tf` | Monthly AWS Budget (default $30, measured before credits) with email alerts |
+| `budget.tf` | Monthly AWS Budget (default $40, measured before credits) with email alerts |
 | `monitoring.tf` | SNS alert topic with every `alert_emails` address subscribed, the app's error-count metric, 9 CloudWatch alarms, the `supple-ai-prod-overview` dashboard ([docs/monitoring.md](docs/monitoring.md)) |
 | `versions.tf` | Terraform/provider versions, S3 state backend with native locking, default tags |
 | `variables.tf`, `outputs.tf` | Inputs (and naming locals) and the values the scripts read |
@@ -45,12 +45,12 @@ the `Project` tag once in Billing → Cost allocation tags.
 
 ## Cost
 
-About **$25 a month**, paid from credits on the Free plan:
+About **$31 a month**, paid from credits on the Free plan:
 
 | Item | Monthly |
 |---|---|
 | RDS db.t4g.micro + 20 GiB gp3 | ≈ $14.10 |
-| EC2 t4g.micro + 8 GiB root disk | ≈ $7.00 |
+| EC2 t4g.small + 8 GiB root disk | ≈ $13.25 |
 | Public IPv4 (the Elastic IP) | ≈ $3.65 |
 | Secrets Manager (database password) | $0.40 |
 | CloudFront, Cognito (< 10,000 users), S3, SNS, Budgets | ≈ $0 (always-free allowances) |
@@ -457,7 +457,7 @@ and calls the API as `/api`. In Terraform:
 - **CloudFront: "Your account must be verified before you can add new CloudFront resources".**
   Open a free AWS Support case (Account and billing) and ask for verification.
 - **EC2: vCPU limit exceeded** during a platform update. The account allows 5 vCPUs, and two
-  t4g.micro use 4. Request more in Service Quotas ("Running On-Demand Standard instances").
+  t4g.small use 4. Request more in Service Quotas ("Running On-Demand Standard instances").
 - **`ExpiredToken` or no credentials.** Run `aws login --profile healthytech` again.
 - **`aws_cloudwatch_log_metric_filter.app_errors`: "The specified log group does not exist".**
   Beanstalk creates the app's log group shortly after the environment. Wait a few minutes and
