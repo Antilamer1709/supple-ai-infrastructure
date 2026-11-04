@@ -18,12 +18,17 @@ Browser ── HTTPS ──> CloudFront (https://dxxxx.cloudfront.net)
                         ▼
               RDS PostgreSQL 16, db.t4g.micro, private subnet
 
+Browser / mobile app ── HTTPS ──> CloudFront media (https://dyyyy.cloudfront.net)
+                                     │  /*  → S3 media bucket (private, OAC): catalog images
+
 Cognito user pool + Managed Login (sign-in/sign-up pages, optional Google) issues the JWTs
 the app sends to /api.
 ```
 
 Because the app and the API share one address, the browser never makes a cross-origin call:
-the frontend uses relative `/api` URLs and the backend has no CORS setup.
+the frontend uses relative `/api` URLs and the backend has no CORS setup. Catalog images
+(ingredient pictures) come from a second distribution at its own address: `<img>` loads them
+cross-origin without CORS, and the backend builds their URLs from `SUPPLE_MEDIA_BASE_URL`.
 
 ## What gets created
 
@@ -32,8 +37,9 @@ the frontend uses relative `/api` URLs and the backend has no CORS setup.
 | `network.tf` | VPC (2 AZs, public + private subnets, no NAT gateway); security groups: instance accepts port 80 only from CloudFront's managed prefix list, database accepts 5432 only from the instance |
 | `database.tf` | RDS PostgreSQL 16 (`db.t4g.micro`, 20 GiB gp3, encrypted, private, deletion protection, final snapshot); master password managed by RDS in Secrets Manager, with automatic rotation turned off |
 | `cognito.tf` | User pool (email sign-in, self sign-up, deletion protection), `admin` group, optional Google provider, the back-office app client (code flow + PKCE), the mobile app client (code flow + PKCE and native sign-in, `formulated://` redirects), Managed Login domain and default branding for both clients |
-| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, notifications through the alerts topic), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users, and may publish its own metrics), artifacts bucket for app versions |
+| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, notifications through the alerts topic), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users, and may publish its own metrics and write catalog images), artifacts bucket for app versions |
 | `frontend.tf` | Private S3 bucket, CloudFront distribution with OAC, `/api/*` routed to Beanstalk, 404 → `index.html` for Angular routes |
+| `media.tf` | Private S3 bucket for catalog images (`ingredients/`, …) and its own CloudFront distribution with OAC: stable, unsigned, year-long cached URLs, no custom error responses |
 | `budget.tf` | Monthly AWS Budget (default $40, measured before credits) with email alerts |
 | `monitoring.tf` | SNS alert topic with every `alert_emails` address subscribed, the app's error-count metric, 9 CloudWatch alarms, the `supple-ai-prod-overview` dashboard ([docs/monitoring.md](docs/monitoring.md)) |
 | `versions.tf` | Terraform/provider versions, S3 state backend with native locking, default tags |
@@ -438,6 +444,9 @@ and calls the API as `/api`. In Terraform:
 3. Point `local.app_url` at the domain, or add it to `callback_urls`/`logout_urls` in
    `cognito.tf` next to the CloudFront address.
 4. Create a DNS record (Route 53 alias, or a CNAME at your DNS provider) to the distribution.
+5. Optionally do the same for `aws_cloudfront_distribution.media` (say `media.example.com`; one
+   certificate can list both names) and point `SUPPLE_MEDIA_BASE_URL` in `backend.tf` at it.
+   The database stores image keys, not URLs, so existing images move to the new address.
 
 ## Troubleshooting the first apply
 
@@ -485,7 +494,7 @@ and calls the API as `/api`. In Terraform:
 The database and the user pool have deletion protection, so `terraform destroy` stops at them.
 1. Turn it off first: `deletion_protection = false` on `aws_db_instance.main` and `"INACTIVE"`
    on `aws_cognito_user_pool.main`, then apply.
-2. Empty the frontend and artifacts buckets.
+2. Empty the frontend, media and artifacts buckets.
 3. Run `terraform destroy`. RDS leaves a final snapshot named `supple-ai-prod-db-final`.
 4. The state bucket from `bootstrap-state.sh` is not managed by Terraform. Delete it by hand
    if needed.

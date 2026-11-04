@@ -18,6 +18,16 @@ output "frontend_bucket" {
   value       = aws_s3_bucket.frontend.bucket
 }
 
+output "media_bucket" {
+  description = "S3 bucket holding the catalog images (ingredients/, ...); the backend's SUPPLE_MEDIA_BUCKET."
+  value       = aws_s3_bucket.media.bucket
+}
+
+output "media_base_url" {
+  description = "HTTPS address of the media distribution that serves the catalog images; the backend's SUPPLE_MEDIA_BASE_URL."
+  value       = "https://${aws_cloudfront_distribution.media.domain_name}"
+}
+
 output "artifacts_bucket" {
   description = "S3 bucket holding the backend JARs (Beanstalk application versions)."
   value       = aws_s3_bucket.artifacts.bucket

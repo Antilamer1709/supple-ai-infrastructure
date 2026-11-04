@@ -50,6 +50,14 @@ data "aws_iam_policy_document" "backend_instance" {
     resources = [aws_cognito_user_pool.main.arn]
   }
 
+  # Admins upload and remove catalog images (media.tf); the media distribution serves them,
+  # so the app never reads the objects back
+  statement {
+    sid       = "WriteMedia"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["${aws_s3_bucket.media.arn}/*"]
+  }
+
   # Micrometer pushes the allowlisted meters (monitoring.tf). PutMetricData has no resource
   # ARN, so the namespace condition is what keeps the app out of every other namespace.
   statement {
@@ -198,6 +206,12 @@ locals {
     # Tokens from this app client count as mobile-app activity, all others as the back office.
     # (Not the back-office client's id: that client depends on CloudFront, which depends on this environment.)
     { namespace = "aws:elasticbeanstalk:application:environment", name = "COGNITO_MOBILE_CLIENT_ID", value = aws_cognito_user_pool_client.mobile.id },
+    # Catalog images (media.tf). The backend's defaults are the local S3Mock with path-style
+    # access, so all four are set here, the real regional S3 endpoint included.
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "SUPPLE_MEDIA_BUCKET", value = aws_s3_bucket.media.bucket },
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "SUPPLE_MEDIA_BASE_URL", value = "https://${aws_cloudfront_distribution.media.domain_name}" },
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "SUPPLE_MEDIA_ENDPOINT", value = "https://s3.${var.region}.amazonaws.com" },
+    { namespace = "aws:elasticbeanstalk:application:environment", name = "SUPPLE_MEDIA_PATH_STYLE_ACCESS", value = "false" },
     # Half the instance's memory for the heap. The rest holds the JVM's non-heap memory (about
     # a quarter on top of the heap) and Linux with Beanstalk's agents (300-400 MB), so a full
     # heap still keeps the instance under enhanced health's 90%-of-memory Warning.

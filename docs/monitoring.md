@@ -38,7 +38,7 @@ reason the instance moved from 1 GiB to 2 GiB). The cause disappears once health
 | Beanstalk metrics | All metrics → `ElasticBeanstalk` → Environment metrics |
 | Instance metrics | All metrics → `EC2` → By Auto Scaling Group (the instance is replaced on platform updates; the group isn't) |
 | Database metrics | All metrics → `RDS` → Per-Database Metrics → `supple-ai-prod-db` |
-| CloudFront metrics | The dashboard's last graph, or switch to us-east-1 → All metrics → `CloudFront` → Per-Distribution Metrics |
+| CloudFront metrics | The dashboard's last graph (the app and API distribution), or switch to us-east-1 → All metrics → `CloudFront` → Per-Distribution Metrics, which also lists the media distribution |
 | Logs | CloudWatch → Logs → Log groups, or Logs Insights for queries (below) |
 | Health and events | Elastic Beanstalk → `supple-ai-prod-backend` → Health, Events |
 | Every JVM meter | `/actuator/metrics` isn't reachable through CloudFront. Open a Session Manager shell on the instance (README, "Operations") and run `curl -s localhost:5000/actuator/metrics` |
