@@ -359,17 +359,18 @@ clears:
 Beanstalk events and the budget alerts go to the same addresses. The
 `supple-ai-prod-overview` dashboard (`terraform output -raw monitoring_dashboard_url`) shows all
 of it in one place. On Beanstalk the app logs JSON lines carrying the request id and the user's
-Cognito `sub`, plus one line per API request with its status and duration.
+Cognito `sub`, plus one line per API request with its status and duration. The request id
+returns to clients in the `X-Request-Id` header, so a reported problem leads straight to its logs.
 
 [docs/monitoring.md](docs/monitoring.md) has where to find each metric, alarm and log, what to
-check when an alarm fires, ready-to-paste Logs Insights queries, and how to change or add
-recipients.
+check when an alarm fires, where to click in the CloudWatch console, the saved log queries,
+following one request by its id, and how to change or add recipients.
 
 ## Operations
 
 - **Monitoring and logs.** [docs/monitoring.md](docs/monitoring.md) covers the dashboard,
-  the alarms, the log groups (kept for 30 days) with ready-to-paste Logs Insights queries, and
-  how to change who gets alerts.
+  the alarms, the log groups (kept for 30 days) with the saved log queries, and how to change
+  who gets alerts.
 - **Shell on the instance.** There's no SSH. Use EC2 console → the instance → **Connect** →
   Session Manager.
 - **Health.** Beanstalk emails every address in `alert_emails` when health changes or a

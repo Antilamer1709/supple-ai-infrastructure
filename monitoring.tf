@@ -1,4 +1,5 @@
-# CloudWatch monitoring: the alert topics, the app's error count, the alarms and the dashboard.
+# CloudWatch monitoring: the alert topics, the app's error count, its log fields and saved
+# queries, the alarms and the dashboard.
 # docs/monitoring.md is the operator guide (where to look, log queries, changing recipients).
 #
 # Everything here fits CloudWatch's always-free tier, which also applies on the Paid plan:
@@ -63,6 +64,105 @@ resource "aws_cloudwatch_log_metric_filter" "app_errors" {
     value     = "1"
     unit      = "Count"
   }
+}
+
+# --- App log fields ----------------------------------------------------------
+
+# Strips the syslog prefix and parses the JSON after it, so Logs Insights sees requestId, path,
+# status, log.level, error.type and the rest as fields, which the saved queries below read. Only
+# lines ingested after it are parsed. CloudWatch keeps the original line too: the metric filter
+# above, the log group's own event view and Beanstalk's viewer still read that. A line that isn't
+# JSON stays as it was and gets an @transformationError field. Part of the ingestion price.
+resource "aws_cloudwatch_log_transformer" "backend" {
+  log_group_arn = "arn:aws:logs:${var.region}:${local.account_id}:log-group:${local.backend_log_group}"
+
+  # "Nov  1 10:00:00 ip-10-0-1-5 web[2345]: {json}"; %% escapes Terraform's template syntax
+  transformer_config {
+    grok {
+      match = "%%{SYSLOGTIMESTAMP:syslog_time} %%{NOTSPACE:syslog_host} %%{SYSLOGPROG:syslog_prog}: %%{GREEDYDATA:app}"
+    }
+  }
+  transformer_config {
+    parse_json {
+      source = "app"
+    }
+  }
+  transformer_config {
+    delete_keys {
+      with_keys = ["app", "syslog_prog"]
+    }
+  }
+}
+
+# --- Saved queries -----------------------------------------------------------
+# Listed in the console under Log Analytics → Saved and sample queries, in the supple-ai-prod
+# folder; docs/monitoring.md explains each. The app's queries read the fields the transformer
+# above extracts. Saved queries can't take parameters in Terraform, so the two per-id ones
+# carry a placeholder to replace. Free.
+
+locals {
+  app_log_queries = {
+    "Recent errors" = <<-EOT
+      fields @timestamp, path, message, error.type, requestId
+      | filter log.level = "ERROR"
+      | sort @timestamp desc
+      | limit 50
+    EOT
+
+    "One request" = <<-EOT
+      fields @timestamp, log.level, log.logger, message, error.message
+      | filter requestId = "REPLACE-WITH-REQUEST-ID"
+      | sort @timestamp asc
+    EOT
+
+    "Slowest endpoints" = <<-EOT
+      filter ispresent(durationMs)
+      | fields coalesce(route, path) as endpoint
+      | stats count() as requests, avg(durationMs) as avg_ms, pct(durationMs, 95) as p95_ms, max(durationMs) as max_ms by method, endpoint
+      | sort p95_ms desc
+      | limit 20
+    EOT
+
+    "5xx responses by endpoint" = <<-EOT
+      filter ispresent(durationMs) and status like /^5/
+      | fields coalesce(route, path) as endpoint
+      | stats count() as responses by method, endpoint, status
+      | sort responses desc
+    EOT
+
+    "One user's requests" = <<-EOT
+      fields @timestamp, method, path, status, durationMs, requestId
+      | filter ispresent(durationMs) and userSub = "REPLACE-WITH-USER-SUB"
+      | sort @timestamp desc
+    EOT
+
+    "Traffic per hour by status" = <<-EOT
+      filter ispresent(durationMs)
+      | parse status /^(?<statusClass>\d)/
+      | stats count() by bin(1h), statusClass
+    EOT
+  }
+}
+
+resource "aws_cloudwatch_query_definition" "app" {
+  for_each = local.app_log_queries
+
+  name            = "${local.name}/${each.key}"
+  log_group_names = [local.backend_log_group]
+  query_string    = each.value
+}
+
+# nginx's own log: 502s while the app restarts, and the 401s for invalid tokens the app never sees
+resource "aws_cloudwatch_query_definition" "unreached" {
+  name            = "${local.name}/Requests that never reached the app"
+  log_group_names = ["/aws/elasticbeanstalk/${aws_elastic_beanstalk_environment.backend.name}/var/log/nginx/access.log"]
+  query_string    = <<-EOT
+    fields @timestamp, @message
+    | parse @message /"(?<method>[A-Z]+) (?<path>\S+) HTTP\/[\d.]+" (?<status>\d{3})/
+    | filter status like /^5/ or status = "401"
+    | sort @timestamp desc
+    | limit 50
+  EOT
 }
 
 # --- Alarms ------------------------------------------------------------------

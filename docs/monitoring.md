@@ -39,7 +39,7 @@ reason the instance moved from 1 GiB to 2 GiB). The cause disappears once health
 | Instance metrics | All metrics → `EC2` → By Auto Scaling Group (the instance is replaced on platform updates; the group isn't) |
 | Database metrics | All metrics → `RDS` → Per-Database Metrics → `supple-ai-prod-db` |
 | CloudFront metrics | The dashboard's last graph (the app and API distribution), or switch to us-east-1 → All metrics → `CloudFront` → Per-Distribution Metrics, which also lists the media distribution |
-| Logs | CloudWatch → Logs → Log groups, or Logs Insights for queries (below) |
+| Logs | CloudWatch → Logs → **Log Analytics** for queries and the saved queries, **Log Management** for the log groups ("Where to click" below) |
 | Health and events | Elastic Beanstalk → `supple-ai-prod-backend` → Health, Events |
 | Every JVM meter | `/actuator/metrics` isn't reachable through CloudFront. Open a Session Manager shell on the instance (README, "Operations") and run `curl -s localhost:5000/actuator/metrics` |
 
@@ -68,11 +68,11 @@ Each alarm emails when it fires and again (`OK`) when it clears.
 | Alarm | Fires when | Check first |
 |---|---|---|
 | `environment-unhealthy` | Beanstalk health is Degraded or Severe for 5 minutes, or Beanstalk stops reporting | Beanstalk → Health and Events for the cause. A deploy or platform update that didn't finish shows there. If the app crashed, the end of `web.stdout.log` |
-| `api-5xx` | 5 or more API requests got a 5xx within 5 minutes | Logs Insights "Recent errors" and "5xx responses by endpoint". A 502 with no app error means the app was down or restarting: check `nginx/error.log` |
-| `api-slow` | The API's p95 response time stayed above 2 seconds for 15 minutes | Logs Insights "Slowest endpoints", then the database CPU graph and `db-pool-starved`. One slow endpoint means a query or code problem; everything slow means the instance or the database is overloaded |
+| `api-5xx` | 5 or more API requests got a 5xx within 5 minutes | Saved queries *Recent errors* and *5xx responses by endpoint*. A 502 with no app error means the app was down or restarting: check `nginx/error.log` |
+| `api-slow` | The API's p95 response time stayed above 2 seconds for 15 minutes | Saved query *Slowest endpoints*, then the database CPU graph and `db-pool-starved`. One slow endpoint means a query or code problem; everything slow means the instance or the database is overloaded |
 | `heap-pressure` | Heap above 90% of its maximum for 15 minutes | The dashboard's heap graph. Steady growth points to a leak; a plateau near the max means the instance is too small. Restart from the Beanstalk console as a stopgap |
-| `db-pool-starved` | Requests waited for a database connection for 5 minutes | Slow queries: "Slowest endpoints", the database CPU graph, `DatabaseConnections` |
-| `app-errors` | The app logged at least one ERROR line within 5 minutes | Logs Insights "Recent errors", then "One request" with its `requestId` |
+| `db-pool-starved` | Requests waited for a database connection for 5 minutes | Slow queries: *Slowest endpoints*, the database CPU graph, `DatabaseConnections` |
+| `app-errors` | The app logged at least one ERROR line within 5 minutes | Saved query *Recent errors*, then *One request* with its `requestId` ("Following one request") |
 | `db-storage-low` | Less than 2 GiB of the database's 20 GiB left | `FreeStorageSpace` trend. Raise `allocated_storage` in `database.tf`, or turn on storage autoscaling |
 | `db-cpu-credits-low` | The database's CPU credit balance is below 30 | The database CPU graph. At 0, AWS bills surplus CPU (unlimited mode). Look for expensive queries |
 | `backend-cpu-credits-low` | The instance's CPU credit balance is below 30 | The instance CPU graph. At 0, surplus CPU is billed if the instance runs in unlimited mode |
@@ -89,8 +89,42 @@ means something stopped reporting.
 | `/aws/elasticbeanstalk/supple-ai-prod-backend/var/log/nginx/access.log` | Every request nginx passed on, with status, but no response time |
 | `/aws/elasticbeanstalk/supple-ai-prod-backend/var/log/nginx/error.log` | nginx errors, e.g. "connect() failed" while the app is down |
 | `/aws/elasticbeanstalk/supple-ai-prod-backend/var/log/eb-engine.log` | Beanstalk deploys and platform updates on the instance |
+| `/aws/elasticbeanstalk/supple-ai-prod-backend/var/log/eb-hooks.log` | Beanstalk's deployment hooks on the instance |
 
-Logs are kept for 30 days.
+Logs are kept for 30 days. Each group has one log stream per instance, named after its EC2
+instance id, so a platform update starts a new stream.
+
+### Where to click
+
+In June 2026 AWS reorganised CloudWatch's **Logs** menu. Logs Insights, Live Tail and Contributor
+Insights became one page, **Log Analytics**, and the log groups moved to **Log Management**. There
+is no "Logs Insights" menu item any more (unless the account opted out of Log Analytics), and
+many AWS help pages still use the old names.
+
+**Query the logs** (most of the time):
+
+1. Open CloudWatch in **eu-north-1** (Europe (Stockholm)) → **Logs** → **Log Analytics**.
+2. Open **Saved and sample queries** (the panel on the right) → folder `supple-ai-prod` → pick a
+   query (next section). It opens with its log group already selected. For a query of your own,
+   keep the language on **Logs Insights QL** and select the log group by name: type
+   `web.stdout.log` or `supple-ai-prod-backend` to find it.
+3. **Widen the time range.** The default is the last hour, and the app is often idle for hours,
+   so an empty result usually means a quiet hour, not a broken query. Choose 1 day, 1 week, or an
+   absolute range around the problem.
+4. **Run query.** The arrow at the left of a result shows all of its fields, the stack trace
+   (`error.stack_trace`) included. **Surrounding logs** on a result shows what was logged just
+   before and after it.
+
+**Browse a group's lines without a query:** **Logs** → **Log Management** → **Log Groups** → the
+group → a log stream, or **Search log group** to search every stream. This view shows the original
+lines, syslog prefix included, and doesn't use the fields.
+
+**Shortcut from Beanstalk:** Elastic Beanstalk → `supple-ai-prod-backend` → **Logs** tab → the
+CloudWatch Logs section lists each group, with links to it, to the query page and to Live Tail.
+
+**Watch lines arrive:** start **Live Tail** from Log Analytics or from a log group, select
+`web.stdout.log` and, optionally, a filter pattern such as a request id. It's free for 1,800
+minutes a month, then $0.01 a minute, so close it when you're done.
 
 ### The app's log lines
 
@@ -98,106 +132,62 @@ On Beanstalk the backend logs JSON (`LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`). Be
 rsyslog adds a syslog prefix, so a line looks like this:
 
 ```
-Nov  1 10:00:00 ip-10-0-1-5 web[2345]: {"@timestamp":"2026-11-01T10:00:00.123Z","log":{"level":"INFO","logger":"…RequestLoggingFilter"},"message":"GET /api/internal/v1/dictionaries/tags 200 12ms","requestId":"68625b90-…","method":"GET","path":"/api/internal/v1/dictionaries/tags","route":"/api/internal/v1/dictionaries/tags","userSub":"0b7c…","status":"200","durationMs":"12",…}
+Nov 14 10:45:55 ip-10-0-1-65 web[629314]: {"@timestamp":"2026-11-14T10:45:55.835Z","log":{"level":"INFO","logger":"com.healthytech.supple.config.logging.RequestLoggingFilter"},"process":{"pid":629314,"thread":{"name":"http-nio-5000-exec-9"}},"service":{"name":"supple","version":"0.0.1-SNAPSHOT","node":{}},"message":"GET /api/internal/v1/dictionaries/tags 200 81ms","path":"/api/internal/v1/dictionaries/tags","route":"/api/internal/v1/dictionaries/tags","method":"GET","requestId":"68625b90-79a5-4815-a760-f04de86946e7","durationMs":"81","userSub":"0b7c…","status":"200","ecs":{"version":"8.11"}}
 ```
 
 - Every line written while handling a request carries `requestId`, `method`, `path` and, for a
-  signed-in user, `userSub` (the Cognito `sub`, the id on the Users screen).
+  signed-in user, `userSub` (the Cognito `sub`, the id on the Users screen). Swagger UI and
+  API-docs requests carry none of them.
 - When a request finishes, `RequestLoggingFilter` writes one line with `status`, `durationMs` and
-  `route` (the endpoint pattern, e.g. `…/tags/{id}`). That's the app's access log.
-- An exception's stack trace is inside its line, in `error.stack_trace`. Click the row in Logs
-  Insights to see the whole line.
+  `route` (the endpoint pattern, e.g. `…/tags/{id}`). That's the app's access log. It's the only
+  line with `durationMs`, which is how the saved queries find it.
+- An exception's line has `error.type`, `error.message` and `error.stack_trace`. The stack trace
+  starts with the root cause and stops at 4,096 characters, because rsyslog cuts every line at
+  8 KB. Before that cap, every logged exception lost its root cause and wasn't valid JSON.
+- A log transformer (`monitoring.tf`) strips the prefix and parses the JSON. In Log Analytics
+  every key is therefore a field (`requestId`, `path`, `status`, `log.level`, `error.type`, …)
+  that `fields`, `filter` and `stats` use directly, without `parse`. It only applies to lines
+  logged after it was applied, so for the first 30 days older lines have no fields. Find those
+  with `filter @message like "…"`, which searches the raw line. The transformer is part of the
+  ingestion price: CloudWatch stores both the original and the parsed line, a few hundred KB here.
+- Locally the app logs plain text, with `[<requestId>]` after the thread name.
 
-Because of the prefix, Logs Insights doesn't discover the JSON fields by itself. Every query
-below pulls the fields it needs out with `parse` and a regex. Locally the app logs plain text.
+### Following one request
 
-### Logs Insights queries
+Every response carries an `X-Request-Id` header, and every error body carries the same value as
+`requestId`. The back office shows it on server-error toasts ("Request ID: …"), and the mobile app
+is asked to put it in bug reports.
 
-CloudWatch → Logs Insights, select the `web.stdout.log` group, choose a time range, and paste a
-query. Save the ones you use with **Save**.
+1. Copy the id from the toast, from the response headers (browser devtools → Network → the
+   request), or from the `requestId` column of *Recent errors*.
+2. Run the saved query *One request* with `REPLACE-WITH-REQUEST-ID` replaced by the id, over a
+   wide enough time range. It lists every line the request wrote, in order: an error with its
+   stack trace, then the access-log line with status and duration.
 
-**Recent errors**
+You don't have to add `requestId` to a query to see it: it's a field, so expand a row or add it to
+`fields`. On lines older than the transformer, `filter @message like "<id>"` finds the id anywhere
+in the line.
 
-```
-fields @timestamp
-| filter @message like /"level":"ERROR"/
-| parse @message /"message":"(?<msg>[^"]*)"/
-| parse @message /"path":"(?<path>[^"]*)"/
-| parse @message /"requestId":"(?<requestId>[^"]*)"/
-| display @timestamp, path, msg, requestId
-| sort @timestamp desc
-| limit 50
-```
+A client may send its own `X-Request-Id` (the mobile app may, the back office doesn't), so an id
+isn't guaranteed to be unique. *One request* can therefore return more than one request, for
+example a retry that reused the id. A 401 for an invalid token never reaches the app's request
+logging and has no id; *Requests that never reached the app* shows those.
 
-**One request**: every line one request wrote, in order. Replace the id.
+### Saved queries
 
-```
-fields @timestamp, @message
-| filter @message like "68625b90-79a5-4815-a760-f04de86946e7"
-| sort @timestamp asc
-```
+`monitoring.tf` defines them, and Log Analytics lists them under **Saved and sample queries** →
+`supple-ai-prod`. Change them in `monitoring.tf`: the next `terraform apply` undoes an edit saved
+in the console. To keep a variation, save it under a new name.
 
-**Slowest endpoints**
-
-```
-filter @message like /RequestLoggingFilter/
-| parse @message /"method":"(?<method>[A-Z]+)"/
-| parse @message /"route":"(?<route>[^"]*)"/
-| parse @message /"path":"(?<path>[^"]*)"/
-| parse @message /"durationMs":"(?<ms>\d+)"/
-| fields coalesce(route, path) as endpoint
-| stats count() as requests, avg(ms) as avg_ms, pct(ms, 95) as p95_ms, max(ms) as max_ms by method, endpoint
-| sort p95_ms desc
-| limit 20
-```
-
-`route` is missing when no controller matched (a 401 or 403 before routing), so the query falls
-back to the raw `path`.
-
-**5xx responses by endpoint** (use `/^4/` for 4xx)
-
-```
-filter @message like /RequestLoggingFilter/
-| parse @message /"method":"(?<method>[A-Z]+)"/
-| parse @message /"route":"(?<route>[^"]*)"/
-| parse @message /"path":"(?<path>[^"]*)"/
-| parse @message /"status":"(?<status>\d+)"/
-| filter status like /^5/
-| fields coalesce(route, path) as endpoint
-| stats count() as responses by method, endpoint, status
-| sort responses desc
-```
-
-**One user's requests**: replace the `sub`.
-
-```
-filter @message like /RequestLoggingFilter/ and @message like /"userSub":"0b7c1a2e-…"/
-| parse @message /"method":"(?<method>[A-Z]+)"/
-| parse @message /"path":"(?<path>[^"]*)"/
-| parse @message /"status":"(?<status>\d+)"/
-| parse @message /"durationMs":"(?<ms>\d+)"/
-| display @timestamp, method, path, status, ms
-| sort @timestamp desc
-```
-
-**Traffic per hour by status**
-
-```
-filter @message like /RequestLoggingFilter/
-| parse @message /"status":"(?<status>\d)\d\d"/
-| stats count() by bin(1h), status
-```
-
-**Requests that never reached the app** (select the `nginx/access.log` group). Includes 502s
-while the app restarts and 401s for invalid tokens, which the app doesn't log.
-
-```
-fields @timestamp, @message
-| parse @message /"(?<method>[A-Z]+) (?<path>\S+) HTTP\/[\d.]+" (?<status>\d{3})/
-| filter status like /^5/ or status = "401"
-| sort @timestamp desc
-| limit 50
-```
+| Query | What it shows |
+|---|---|
+| *Recent errors* | The latest 50 ERROR lines, with path, message, exception type and request id |
+| *One request* | Every line one request wrote. Replace the placeholder with its id |
+| *Slowest endpoints* | Requests, average, p95 and maximum duration per endpoint. The endpoint is `route`, or the raw `path` when no controller matched (a 403 before routing) |
+| *5xx responses by endpoint* | 5xx responses per endpoint and status. Change `/^5/` to `/^4/` for 4xx |
+| *One user's requests* | One user's requests, newest first. Replace the placeholder with their Cognito `sub` (Users screen) |
+| *Traffic per hour by status* | Requests per hour by status class (2, 3, 4, 5) |
+| *Requests that never reached the app* | From nginx's `access.log`: 5xx responses (502s while the app restarts) and 401s for invalid tokens, which the app doesn't log |
 
 ## Changing who gets alerts
 
@@ -251,10 +241,22 @@ remove the address from `alert_emails`.
    the new version, and Beanstalk restarts the app with the new environment variables.
 3. After about 15 minutes, open the dashboard. Every graph should have data. `App ERROR lines`
    stays empty until the first error, and `DB pool pending` shows zeros.
-4. **If the app's log format changes,** re-test the error filter: CloudWatch → Log groups →
-   `web.stdout.log` → Metric filters → `supple-ai-prod-app-errors` → Edit → **Test pattern**
+4. **If the app's log format changes,** re-test the error filter: CloudWatch → Logs → Log Management → Log
+   Groups → `web.stdout.log` → Metric filters → `supple-ai-prod-app-errors` → Edit → **Test pattern**
    against recent events. The pattern `%level...ERROR%` matches `"level":"ERROR"`; metric-filter
    regexes don't accept the `"` character, so each `.` stands for one of `":"`.
+
+## After the first apply with the log transformer
+
+1. `terraform plan` shows `aws_cloudwatch_log_transformer.backend` and seven
+   `aws_cloudwatch_query_definition` resources to add, plus the expected Beanstalk line (README,
+   "Setup", B step 6). Apply.
+2. Deploy the backend (`scripts/deploy-backend.sh`) if it's older than the request-id change: the
+   `X-Request-Id` header, `requestId` in error bodies and the stack-trace cap need it.
+3. Call any API endpoint, copy the response's `X-Request-Id` (browser devtools → Network), and
+   run *One request* with it over the last hour. It should list the access-log line with
+   `requestId` as a field. If it lists nothing but `filter @message like "<id>"` finds the line,
+   check for `@transformationError` on it: the line didn't match the transformer's grok pattern.
 
 ## Adding a metric or alarm
 
