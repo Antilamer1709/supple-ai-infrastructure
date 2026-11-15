@@ -487,7 +487,7 @@ and calls the API as `/api`. In Terraform:
   again; it only creates what the failed run skipped.
 - **The app's Users screen shows "The user directory is unavailable".** The backend got an error
   from Cognito; the cause is in the app log. Usually the instance role lacks
-  `cognito-idp:ListUsers`/`ListUsersInGroup` (the `ReadUserPool` statement in `backend.tf`), so
+  `cognito-idp:ListUsers`/`AdminListGroupsForUser` (the `ReadUserPool` statement in `backend.tf`), so
   run `terraform apply`. No restart is needed; the next request uses the new permission.
 
 ## Destroying
@@ -499,3 +499,7 @@ The database and the user pool have deletion protection, so `terraform destroy` 
 3. Run `terraform destroy`. RDS leaves a final snapshot named `supple-ai-prod-db-final`.
 4. The state bucket from `bootstrap-state.sh` is not managed by Terraform. Delete it by hand
    if needed.
+
+## Pagination rollout
+
+Apply the scoped ReadUserPool IAM change before deploying the pagination backend: Users now reads one Cognito page and checks the returned accounts with AdminListGroupsForUser. Without this permission Users returns 503. ListUsersInGroup is no longer used. Then deploy matched backend/back-office builds in a coordinated maintenance window and migrate the outside mobile goals/products consumer. No Terraform apply or deployment is part of source validation. /api/* keeps caching disabled and forwards viewer query parameters.
