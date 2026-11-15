@@ -1,0 +1,1 @@
+Read and follow `CLAUDE.md` in this directory; it is the single source of truth for project instructions.
