@@ -487,7 +487,7 @@ and calls the API as `/api`. In Terraform:
   again; it only creates what the failed run skipped.
 - **The app's Users screen shows "The user directory is unavailable".** The backend got an error
   from Cognito; the cause is in the app log. Usually the instance role lacks
-  `cognito-idp:ListUsers`/`ListUsersInGroup` (the `ReadUserPool` statement in `backend.tf`), so
+  `cognito-idp:ListUsers`/`AdminListGroupsForUser` (the `ReadUserPool` statement in `backend.tf`), so
   run `terraform apply`. No restart is needed; the next request uses the new permission.
 
 ## Destroying
