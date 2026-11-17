@@ -165,8 +165,8 @@ bucket keeps every earlier version for 90 days.
 
    Repeat this after every later change to the file.
 
-9. **Put the new Cognito IDs into the apps.** Both still contain `6plp3eqqvjlf3u7mav5q7b5mh6%`
-   placeholders:
+9. **Put the new Cognito IDs into the apps.** Both hold the IDs of the previous user pool, so a
+   new account's pool needs its own:
 
    ```bash
    terraform output -raw cognito_issuer_uri   # → frontend oidcIssuerUri, backend issuer-uri default
@@ -332,8 +332,8 @@ It's a public client allowing both Managed Login in the system browser (code + P
 included) and native sign-in screens (`USER_AUTH` / SRP), with redirects
 `formulated://callback` and `formulated://signout` (the `mobile_url_scheme` local in
 `variables.tf`), 60-minute access/ID tokens and a 90-day refresh token. The developer's guide is
-`../supple-ai-backend/docs/mobile-client.md`; after the apply that creates the client, put
-`terraform output -raw cognito_mobile_client_id` in place of its `6plp3eqqvjlf3u7mav5q7b5mh6%`.
+`../supple-ai-backend/docs/mobile-client.md`, which holds the client's id. If the user pool is ever
+recreated, update the id there from `terraform output -raw cognito_mobile_client_id`.
 
 Beanstalk receives the same id as `COGNITO_MOBILE_CLIENT_ID`: the backend counts that client's
 tokens (and anonymous requests carrying `X-Installation-Id`) as app activity and every other token
@@ -500,8 +500,6 @@ The database and the user pool have deletion protection, so `terraform destroy` 
 4. The state bucket from `bootstrap-state.sh` is not managed by Terraform. Delete it by hand
    if needed.
 
-## Pagination rollout
+## Pagination infrastructure
 
-Users reads one Cognito page and the admin group’s members with `ListUsersInGroup`; `AdminListGroupsForUser` is no longer used. Apply the `ReadUserPool` change immediately before deploying that backend; until then, an older backend that calls `AdminListGroupsForUser` returns 503 on Users and records audit entries with the sub only. `/api/*` keeps caching disabled and forwards viewer query parameters. See [Pagination release](docs/pagination.md) for the operator sequence.
-
-Follow the backend's [coordinated rollout](../supple-ai-backend/docs/pagination.md#coordinated-rollout) for installations predating pagination and slim responses, including the frontend-first order and required tab reloads. The [mobile contract](../supple-ai-backend/docs/mobile-client.md#catalogue-page-migration-breaking-change) covers external consumers.
+The backend instance role reads the configured Cognito pool with `ListUsers` and its admin group with `ListUsersInGroup`. CloudFront forwards API query parameters with caching disabled. See [Pagination infrastructure](docs/pagination.md) for the permission scope and request-routing decisions.

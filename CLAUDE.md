@@ -34,6 +34,12 @@ scripts/deploy-frontend.sh
 - State: S3 with `use_lockfile = true` (no DynamoDB). Bucket, key and region are in the gitignored `backend.hcl` written by `scripts/bootstrap-state.sh`. Never commit state, `*.tfvars` or `backend.hcl`. `terraform.tfvars.example` is the template; the real `terraform.tfvars` is kept in the state bucket (`s3://<state bucket>/terraform.tfvars`), and a newcomer's `terraform plan` must show no changes before anything is applied (README "Setup").
 - Pinned versions: Terraform ≥ 1.11, `hashicorp/aws ~> 6.69.1`, `terraform-aws-modules/vpc/aws 6.7.3`.
 
+## Documentation
+
+Keep `docs/` as a durable, high-level record of each feature: its purpose, behavior, important constraints, design decisions and rationale. Update the existing feature document when behavior changes; create a new one for a new feature. Keep implementation instructions and test commands in this guide or the README. Completed rollout checklists, temporary deployment status and per-task test results do not belong in feature documents.
+
+Scope feature documentation to managed resources, permissions, configuration, request routing and operational design decisions. Keep frontend interaction and backend implementation details in their owning repositories.
+
 ## Design decisions to preserve
 
 - **One CloudFront distribution for app and API.** `/api/*` goes to Beanstalk; everything else goes to the private S3 bucket through OAC. This makes every browser call same-origin. The backend has no CORS configuration and the frontend uses relative `/api` URLs. Don't add another distribution for the app or the API, or absolute API URLs.
@@ -53,7 +59,7 @@ scripts/deploy-frontend.sh
   - The backend's metric names are a cross-repo contract: Micrometer publishes gauges as `<meter>.value` (`supple.jvm.heap.used.value`, `supple.jvm.heap.max.value`, `hikaricp.connections.pending.value`), the backend allowlists exactly those meters and drops their tags, and the instance role may `PutMetricData` only in the `SuppleAI/Backend` namespace. The backend's export is switched on by `MANAGEMENT_CLOUDWATCH_METRICS_EXPORT_ENABLED=true` and its JSON logs by `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`, both set in `backend.tf`.
   - Beanstalk's rsyslog prefixes every app line (`Nov  1 10:00:00 ip-… web[pid]: {json}`) and cuts it at 8 KB (the backend caps stack traces at 4,096 characters, root cause first, to stay under). The prefix hides the JSON from Logs Insights and from JSON metric-filter patterns. The `ErrorLogLines` filter therefore reads the original line with the regex `%level...ERROR%`, matching `"level":"ERROR"` (ECS nests the level under `log`; metric-filter regexes reject `"`, and the first apply failed on it). For queries, `aws_cloudwatch_log_transformer.backend` (grok, then parseJSON) turns every key into a Logs Insights field. The saved queries (`aws_cloudwatch_query_definition`, folder `supple-ai-prod`) read those fields, the backend's MDC keys (`requestId`, `path`, `route`, `status`, `durationMs`, `userSub`) and ECS's `log.level` and `error.*`. The transformer is part of the ingestion price and leaves the metric filter on the original line (`apply_on_transformed_logs` stays false). The user chose it over shipping a `.platform` rsyslog hook, which would mean switching the deploy to a zip bundle. Terraform's saved queries can't take parameters, so the per-id ones carry a `REPLACE-WITH-…` placeholder.
   - Alarms address the instance by its Auto Scaling group (`autoscaling_groups[0]`), which survives platform updates, and the database by its identifier.
-- **The apps hold only the Cognito IDs.** Frontend `src/environments/environment.ts` and the backend `application.yaml` issuer default. They contain `6plp3eqqvjlf3u7mav5q7b5mh6%` placeholders until the first apply. `deploy-frontend.sh` refuses builds whose IDs don't match `terraform output`.
+- **The apps hold only the Cognito IDs.** Frontend `src/environments/environment.ts` and the backend `application.yaml` issuer default. They hold the current pool's IDs, which change only if the pool is recreated. `deploy-frontend.sh` refuses builds whose IDs don't match `terraform output`.
 
 ## AWS account constraints
 
