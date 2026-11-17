@@ -34,6 +34,12 @@ scripts/deploy-frontend.sh
 - State: S3 with `use_lockfile = true` (no DynamoDB). Bucket, key and region are in the gitignored `backend.hcl` written by `scripts/bootstrap-state.sh`. Never commit state, `*.tfvars` or `backend.hcl`. `terraform.tfvars.example` is the template; the real `terraform.tfvars` is kept in the state bucket (`s3://<state bucket>/terraform.tfvars`), and a newcomer's `terraform plan` must show no changes before anything is applied (README "Setup").
 - Pinned versions: Terraform ≥ 1.11, `hashicorp/aws ~> 6.69.1`, `terraform-aws-modules/vpc/aws 6.7.3`.
 
+## Documentation
+
+Keep `docs/` as a durable, high-level record of each feature: its purpose, behavior, important constraints, design decisions and rationale. Update the existing feature document when behavior changes; create a new one for a new feature. Keep implementation instructions and test commands in this guide or the README. Completed rollout checklists, temporary deployment status and per-task test results do not belong in feature documents.
+
+Scope feature documentation to managed resources, permissions, configuration, request routing and operational design decisions. Keep frontend interaction and backend implementation details in their owning repositories.
+
 ## Design decisions to preserve
 
 - **One CloudFront distribution for app and API.** `/api/*` goes to Beanstalk; everything else goes to the private S3 bucket through OAC. This makes every browser call same-origin. The backend has no CORS configuration and the frontend uses relative `/api` URLs. Don't add another distribution for the app or the API, or absolute API URLs.

@@ -500,8 +500,6 @@ The database and the user pool have deletion protection, so `terraform destroy` 
 4. The state bucket from `bootstrap-state.sh` is not managed by Terraform. Delete it by hand
    if needed.
 
-## Pagination rollout
+## Pagination infrastructure
 
-Users reads one Cognito page and the admin group’s members with `ListUsersInGroup`; `AdminListGroupsForUser` is no longer used. Apply the `ReadUserPool` change immediately before deploying that backend; until then, an older backend that calls `AdminListGroupsForUser` returns 503 on Users and records audit entries with the sub only. `/api/*` keeps caching disabled and forwards viewer query parameters. See [Pagination release](docs/pagination.md) for the operator sequence.
-
-Follow the backend's [coordinated rollout](../supple-ai-backend/docs/pagination.md#coordinated-rollout) for installations predating pagination and slim responses, including the frontend-first order and required tab reloads. The [mobile contract](../supple-ai-backend/docs/mobile-client.md#catalogue-page-migration-breaking-change) covers external consumers.
+The backend instance role reads the configured Cognito pool with `ListUsers` and its admin group with `ListUsersInGroup`. CloudFront forwards API query parameters with caching disabled. See [Pagination infrastructure](docs/pagination.md) for the permission scope and request-routing decisions.

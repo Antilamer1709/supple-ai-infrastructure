@@ -1,14 +1,20 @@
-# Pagination release
+# Pagination infrastructure
 
-The backend’s Users endpoint reads one Cognito cursor page with `ListUsers`, then the members of the `admin` group with `ListUsersInGroup`. The latter normally takes one call because there are only a handful of admins; provider continuations are followed. An empty user page skips the group read. Audit actor lookups use the same two reads, while the nightly activity cleanup lists only user subs.
+Paged API reads use the existing API route and Cognito user pool. Infrastructure provides the user-directory permissions and forwards query parameters without caching API responses.
 
-`backend.tf` grants both actions through `ReadUserPool`, scoped to the existing pool ARN. The issuer still supplies the pool id and region; no new environment variable is needed. A provider or IAM failure remains a 503 on Users. Neither the user list nor its API responses are cached by CloudFront.
+## User-directory permissions
 
-## Operator sequence
+The backend instance role has a `ReadUserPool` policy statement scoped to the application's Cognito pool ARN:
 
-1. Validate Terraform with `terraform fmt -check -recursive` and `terraform init -backend=false && terraform validate` before release.
-2. Prepare matching application builds and follow the backend’s [coordinated rollout](../../supple-ai-backend/docs/pagination.md#coordinated-rollout), including the back-office reload requirement and mobile migration.
-3. Run `terraform apply` immediately before `scripts/deploy-backend.sh`. Removing the old per-user membership permission temporarily makes Users unavailable on the previous pagination backend; during that interval audit writes retain only the actor sub. Deploy the prepared backend promptly.
-4. Verify Users, cursor navigation and an audited admin write. A missing `admin` group or either missing read permission is a configuration failure, not a reason to treat every account as a regular user.
+| Permission                     | Purpose                                                                |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `cognito-idp:ListUsers`        | Read account pages and support directory lookups and activity cleanup. |
+| `cognito-idp:ListUsersInGroup` | Read members of the `admin` group.                                     |
 
-Local implementation checks do not apply Terraform or deploy applications. See the README’s [troubleshooting](../README.md#troubleshooting) if the directory is unavailable.
+Reading the admin group once supports a user-page cost that does not grow with each displayed account. The `admin` group is managed in the same Terraform configuration. The configured issuer identifies the pool and region.
+
+## API request routing
+
+CloudFront forwards `/api/*` requests and their viewer query parameters to the backend with caching disabled. Page numbers, cursors, searches and filters therefore reach the application unchanged, and responses remain specific to the current request and user.
+
+The existing route and pool permissions support pagination without additional infrastructure services. The [troubleshooting guide](../README.md#troubleshooting) covers user-directory access failures.
