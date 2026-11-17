@@ -487,7 +487,7 @@ and calls the API as `/api`. In Terraform:
   again; it only creates what the failed run skipped.
 - **The app's Users screen shows "The user directory is unavailable".** The backend got an error
   from Cognito; the cause is in the app log. Usually the instance role lacks
-  `cognito-idp:ListUsers`/`AdminListGroupsForUser` (the `ReadUserPool` statement in `backend.tf`), so
+  `cognito-idp:ListUsers`/`ListUsersInGroup` (the `ReadUserPool` statement in `backend.tf`), so
   run `terraform apply`. No restart is needed; the next request uses the new permission.
 
 ## Destroying
@@ -502,6 +502,6 @@ The database and the user pool have deletion protection, so `terraform destroy` 
 
 ## Pagination rollout
 
-Users reads one Cognito page and checks returned accounts with `AdminListGroupsForUser`. Apply the scoped `ReadUserPool` IAM permission before deploying a backend that uses it; without it Users returns 503. `ListUsersInGroup` is no longer used. `/api/*` keeps caching disabled and forwards viewer query parameters.
+Users reads one Cognito page and the admin group’s members with `ListUsersInGroup`; `AdminListGroupsForUser` is no longer used. Apply the `ReadUserPool` change immediately before deploying that backend; until then, an older backend that calls `AdminListGroupsForUser` returns 503 on Users and records audit entries with the sub only. `/api/*` keeps caching disabled and forwards viewer query parameters. See [Pagination release](docs/pagination.md) for the operator sequence.
 
 Follow the backend's [coordinated rollout](../supple-ai-backend/docs/pagination.md#coordinated-rollout) for installations predating pagination and slim responses, including the frontend-first order and required tab reloads. The [mobile contract](../supple-ai-backend/docs/mobile-client.md#catalogue-page-migration-breaking-change) covers external consumers.

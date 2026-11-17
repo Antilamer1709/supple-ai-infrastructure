@@ -43,10 +43,11 @@ data "aws_iam_policy_document" "backend_instance" {
     resources = ["${aws_s3_bucket.artifacts.arn}/*"]
   }
 
-  # Users reads one provider page and checks memberships only for its returned accounts
+  # Users reads one provider page and the admin group's members (a handful of accounts);
+  # the audit log looks one account up by sub the same way
   statement {
     sid       = "ReadUserPool"
-    actions   = ["cognito-idp:ListUsers", "cognito-idp:AdminListGroupsForUser"]
+    actions   = ["cognito-idp:ListUsers", "cognito-idp:ListUsersInGroup"]
     resources = [aws_cognito_user_pool.main.arn]
   }
 
