@@ -173,6 +173,22 @@ isn't guaranteed to be unique. *One request* can therefore return more than one 
 example a retry that reused the id. A 401 for an invalid token never reaches the app's request
 logging and has no id; *Requests that never reached the app* shows those.
 
+### SQL budget warnings
+
+The backend logs one WARN when a request exceeds `supple.sql-budget.read` (default 30
+statements for GET/HEAD/OPTIONS) or `supple.sql-budget.write` (default 100 for other methods).
+The message contains `ran … SQL statements, over the budget of …` and the request id. Requests
+still complete normally; these warnings do not trigger the ERROR alarm.
+
+In the backend's `web.stdout.log` group, search for `filter @message like "over the budget"`,
+then use the request id with *One request*. Compare query growth and response size before
+changing a threshold: several batched queries are expected, while one query per returned row
+signals a regression. Large writes can legitimately insert one row per item; raise a budget
+only after confirming the workload is expected.
+
+The count covers Hibernate statements during the request. Direct JDBC work (audit/activity)
+and background jobs are excluded, so it is not a total database-work or latency measurement.
+
 ### Saved queries
 
 `monitoring.tf` defines them, and Log Analytics lists them under **Saved and sample queries** →

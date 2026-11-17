@@ -502,4 +502,6 @@ The database and the user pool have deletion protection, so `terraform destroy` 
 
 ## Pagination rollout
 
-Apply the scoped ReadUserPool IAM change before deploying the pagination backend: Users now reads one Cognito page and checks the returned accounts with AdminListGroupsForUser. Without this permission Users returns 503. ListUsersInGroup is no longer used. Then deploy matched backend/back-office builds in a coordinated maintenance window and migrate the outside mobile goals/products consumer. No Terraform apply or deployment is part of source validation. /api/* keeps caching disabled and forwards viewer query parameters.
+Users reads one Cognito page and checks returned accounts with `AdminListGroupsForUser`. Apply the scoped `ReadUserPool` IAM permission before deploying a backend that uses it; without it Users returns 503. `ListUsersInGroup` is no longer used. `/api/*` keeps caching disabled and forwards viewer query parameters.
+
+Follow the backend's [coordinated rollout](../supple-ai-backend/docs/pagination.md#coordinated-rollout) for installations predating pagination and slim responses, including the frontend-first order and required tab reloads. The [mobile contract](../supple-ai-backend/docs/mobile-client.md#catalogue-page-migration-breaking-change) covers external consumers.
