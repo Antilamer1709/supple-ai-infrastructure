@@ -37,7 +37,7 @@ cross-origin without CORS, and the backend builds their URLs from `SUPPLE_MEDIA_
 | `network.tf` | VPC (2 AZs, public + private subnets, no NAT gateway); security groups: instance accepts port 80 only from CloudFront's managed prefix list, database accepts 5432 only from the instance |
 | `database.tf` | RDS PostgreSQL 16 (`db.t4g.micro`, 20 GiB gp3, encrypted, private, deletion protection, final snapshot); master password managed by RDS in Secrets Manager, with automatic rotation turned off |
 | `cognito.tf` | User pool (email sign-in, self sign-up, deletion protection), `admin` group, optional Google provider, the back-office app client (code flow + PKCE), the mobile app client (code flow + PKCE and native sign-in, `formulated://` redirects), Managed Login domain and default branding for both clients |
-| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, notifications through the alerts topic), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen, the user pool's users, and may publish its own metrics and write catalog images), artifacts bucket for app versions |
+| `backend.tf` | Beanstalk application + single-instance environment (Corretto 25, enhanced health, managed platform updates, CloudWatch logs, notifications through the alerts topic), IAM roles (the instance role may read the database secret, the app versions and, for the admin Users screen and the dashboard, the user pool's users and size, and may publish its own metrics and write catalog images), artifacts bucket for app versions |
 | `frontend.tf` | Private S3 bucket, CloudFront distribution with OAC, `/api/*` routed to Beanstalk, 404 → `index.html` for Angular routes |
 | `media.tf` | Private S3 bucket for catalog images (`ingredients/`, …) and its own CloudFront distribution with OAC: stable, unsigned, year-long cached URLs, no custom error responses |
 | `budget.tf` | Monthly AWS Budget (default $40, measured before credits) with email alerts |
@@ -335,12 +335,6 @@ included) and native sign-in screens (`USER_AUTH` / SRP), with redirects
 `../supple-ai-backend/docs/mobile-client.md`, which holds the client's id. If the user pool is ever
 recreated, update the id there from `terraform output -raw cognito_mobile_client_id`.
 
-Beanstalk receives the same id as `COGNITO_MOBILE_CLIENT_ID`: the backend counts that client's
-tokens (and anonymous requests carrying `X-Installation-Id`) as app activity and every other token
-as back office, for the users screen's "last seen" and the dashboard statistics. It's the mobile
-client's id that's passed because the back-office client depends on CloudFront, which depends on
-the Beanstalk environment. Changing the env var restarts the app (about a minute).
-
 ## Monitoring
 
 CloudWatch watches the backend, the database and CloudFront for $0, inside the always-free tier.
@@ -489,6 +483,9 @@ and calls the API as `/api`. In Terraform:
   from Cognito; the cause is in the app log. Usually the instance role lacks
   `cognito-idp:ListUsers`/`ListUsersInGroup` (the `ReadUserPool` statement in `backend.tf`), so
   run `terraform apply`. No restart is needed; the next request uses the new permission.
+- **The dashboard's "Registered users" tile shows a dash.** Same cause for
+  `cognito-idp:DescribeUserPool`, which the same statement grants; the rest of the dashboard
+  still loads. Run `terraform apply`.
 
 ## Destroying
 

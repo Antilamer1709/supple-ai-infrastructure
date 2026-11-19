@@ -44,10 +44,11 @@ data "aws_iam_policy_document" "backend_instance" {
   }
 
   # Users reads one provider page and the admin group's members (a handful of accounts);
-  # the audit log looks one account up by sub the same way
+  # the audit log looks one account up by sub the same way, and the dashboard reads the
+  # pool's estimated user count
   statement {
     sid       = "ReadUserPool"
-    actions   = ["cognito-idp:ListUsers", "cognito-idp:ListUsersInGroup"]
+    actions   = ["cognito-idp:ListUsers", "cognito-idp:ListUsersInGroup", "cognito-idp:DescribeUserPool"]
     resources = [aws_cognito_user_pool.main.arn]
   }
 
@@ -204,9 +205,6 @@ locals {
     { namespace = "aws:elasticbeanstalk:application:environment", name = "SPRING_DATASOURCE_URL", value = "jdbc:postgresql://${aws_db_instance.main.endpoint}/${aws_db_instance.main.db_name}" },
     { namespace = "aws:elasticbeanstalk:application:environment", name = "SPRING_DATASOURCE_USERNAME", value = aws_db_instance.main.username },
     { namespace = "aws:elasticbeanstalk:application:environment", name = "COGNITO_ISSUER_URI", value = "https://${aws_cognito_user_pool.main.endpoint}" },
-    # Tokens from this app client count as mobile-app activity, all others as the back office.
-    # (Not the back-office client's id: that client depends on CloudFront, which depends on this environment.)
-    { namespace = "aws:elasticbeanstalk:application:environment", name = "COGNITO_MOBILE_CLIENT_ID", value = aws_cognito_user_pool_client.mobile.id },
     # Catalog images (media.tf). The backend's defaults are the local S3Mock with path-style
     # access, so all four are set here, the real regional S3 endpoint included.
     { namespace = "aws:elasticbeanstalk:application:environment", name = "SUPPLE_MEDIA_BUCKET", value = aws_s3_bucket.media.bucket },

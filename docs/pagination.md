@@ -6,10 +6,11 @@ Paged API reads use the existing API route and Cognito user pool. Infrastructure
 
 The backend instance role has a `ReadUserPool` policy statement scoped to the application's Cognito pool ARN:
 
-| Permission                     | Purpose                                                                |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `cognito-idp:ListUsers`        | Read account pages and support directory lookups and activity cleanup. |
-| `cognito-idp:ListUsersInGroup` | Read members of the `admin` group.                                     |
+| Permission                     | Purpose                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `cognito-idp:ListUsers`        | Read account pages and support directory lookups.                        |
+| `cognito-idp:ListUsersInGroup` | Read members of the `admin` group.                                       |
+| `cognito-idp:DescribeUserPool` | Read the pool's estimated user count for the dashboard; paging skips it. |
 
 Reading the admin group once supports a user-page cost that does not grow with each displayed account. The `admin` group is managed in the same Terraform configuration. The configured issuer identifies the pool and region.
 

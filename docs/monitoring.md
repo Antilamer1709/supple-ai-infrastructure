@@ -186,7 +186,7 @@ changing a threshold: several batched queries are expected, while one query per 
 signals a regression. Large writes can legitimately insert one row per item; raise a budget
 only after confirming the workload is expected.
 
-The count covers Hibernate statements during the request. Direct JDBC work (audit/activity)
+The count covers Hibernate statements during the request. Direct JDBC work (the audit log, the dashboard)
 and background jobs are excluded, so it is not a total database-work or latency measurement.
 
 ### Saved queries

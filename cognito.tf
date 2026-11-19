@@ -124,9 +124,7 @@ resource "aws_cognito_user_pool_client" "backoffice" {
 
 # Public client for the mobile app, created ahead of the app so its developer never needs AWS
 # access. It allows both Managed Login in the system browser (code + PKCE, Google included) and
-# native sign-in screens through the Cognito SDK or Amplify (USER_AUTH / SRP). The backend gets
-# its id as COGNITO_MOBILE_CLIENT_ID and counts its tokens as app activity, every other token as
-# the back office.
+# native sign-in screens through the Cognito SDK or Amplify (USER_AUTH / SRP).
 resource "aws_cognito_user_pool_client" "mobile" {
   name         = "${local.name}-mobile"
   user_pool_id = aws_cognito_user_pool.main.id
